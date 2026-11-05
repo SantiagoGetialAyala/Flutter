@@ -1,0 +1,233 @@
+from rest_framework import serializers
+
+from .models import (
+    Certification, Crop, ExportLotAllocation, ExportOperation, ExportStatusHistory,
+    Farm, Harvest, InventoryMovement, Plot, ProductLot, Producer,
+    TraceabilityEvent, LotRelationship,
+)
+
+
+class TenantSerializer(serializers.ModelSerializer):
+    def _same_organization(self, value, field):
+        if value is None:
+            return
+        org_id = self.context["view"].organization_id
+        if getattr(value, "organization_id", org_id) != org_id:
+            raise serializers.ValidationError({field: "El recurso debe pertenecer a la organización activa."})
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        for field in ("producer", "farm", "crop", "plot", "harvest", "lot", "source_lot", "target_lot", "export", "importer", "user"):
+            value = attrs.get(field)
+            if value is not None:
+                self._same_organization(value, field)
+                from business.scoping import scope
+                from users.models import Membership, User
+                view = self.context['view']
+                if isinstance(value, User):
+                    if not Membership.objects.filter(organization_id=view.organization_id, user=value, is_active=True).exists():
+                        raise serializers.ValidationError({field: 'El usuario debe pertenecer a esta empresa.'})
+                    if view.get_membership().role.name != 'administrador':
+                        raise serializers.ValidationError({field: 'Solo administración puede vincular cuentas.'})
+                elif hasattr(value, 'organization_id') and not scope(type(value).objects.all(), view.get_membership(), self.context['request'].user).filter(pk=value.pk).exists():
+                    raise serializers.ValidationError({field: 'No tienes acceso a este recurso.'})
+        if self.instance and self.instance._meta.model_name == 'productlot' and 'quantity_initial' in attrs and attrs['quantity_initial'] != self.instance.quantity_initial:
+            raise serializers.ValidationError({'quantity_initial': 'Registra un movimiento para ajustar existencias.'})
+        def current(name):
+            return attrs.get(name, getattr(self.instance, name, self.Meta.model._meta.get_field(name).get_default()))
+        model = self.Meta.model.__name__
+        if model == 'ProductLot' and current('harvest'):
+            harvest = current('harvest')
+            if harvest.plot.farm.producer_id != current('producer').pk or harvest.product_type != current('product_type') or harvest.unit != current('unit'):
+                raise serializers.ValidationError('La cosecha debe corresponder al productor, producto y unidad del lote.')
+        if model == 'Plot' and current('crop') and current('crop').farm_id != current('farm').pk:
+            raise serializers.ValidationError({'crop': 'El cultivo debe pertenecer a la finca seleccionada.'})
+        return attrs
+
+
+class ProducerSerializer(TenantSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.context['view'].get_membership().role.name == 'productor':
+            attrs['user'] = self.context['request'].user
+        return attrs
+
+    class Meta:
+        model = Producer
+        exclude = ("organization", "created_at", "updated_at")
+
+
+class FarmSerializer(TenantSerializer):
+    class Meta:
+        model = Farm
+        exclude = ("organization", "created_at", "updated_at")
+
+
+class CropSerializer(TenantSerializer):
+    class Meta:
+        model = Crop
+        exclude = ("organization", "created_at", "updated_at")
+
+
+class PlotSerializer(TenantSerializer):
+    geometry = serializers.JSONField()
+
+    class Meta:
+        model = Plot
+        exclude = ("organization", "created_at", "updated_at")
+
+    def validate_geometry(self, value):
+        if not isinstance(value, dict) or value.get("type") not in {"Point", "Polygon", "MultiPolygon"}:
+            raise serializers.ValidationError("Usa GeoJSON Point, Polygon o MultiPolygon.")
+        coordinates = value.get("coordinates")
+        if coordinates is None:
+            raise serializers.ValidationError("GeoJSON requiere coordinates.")
+
+        def check_position(position):
+            if isinstance(position, (list, tuple)) and len(position) >= 2 and all(isinstance(n, (int, float)) for n in position[:2]):
+                lon, lat = position[:2]
+                return -180 <= lon <= 180 and -90 <= lat <= 90
+            if isinstance(position, (list, tuple)) and position:
+                return all(check_position(item) for item in position)
+            return False
+
+        if not check_position(coordinates):
+            raise serializers.ValidationError("Coordenadas fuera de rango o GeoJSON inválido.")
+        if value["type"] in {"Polygon", "MultiPolygon"} and not _closed_rings(value["type"], coordinates):
+            raise serializers.ValidationError("Cada anillo del polígono debe cerrar en su punto inicial y tener al menos 4 puntos.")
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        membership = self.context["view"].get_membership()
+        if membership.role.name not in {"administrador", "superadmin", "productor", "exportaciones", "documental"}:
+            data["geometry"] = None
+        return data
+
+
+def _closed_rings(geometry_type, coordinates):
+    polygons = [coordinates] if geometry_type == "Polygon" else coordinates
+    if not isinstance(polygons, list) or not polygons:
+        return False
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not polygon:
+            return False
+        for ring in polygon:
+            if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
+                return False
+    return True
+
+
+class HarvestSerializer(TenantSerializer):
+    class Meta:
+        model = Harvest
+        exclude = ("organization", "created_at", "updated_at")
+
+
+class CertificationSerializer(TenantSerializer):
+    class Meta:
+        model = Certification
+        exclude = ("organization", "created_at", "updated_at")
+
+
+class ProductLotSerializer(TenantSerializer):
+    class Meta:
+        model = ProductLot
+        exclude = ("organization", "created_at", "updated_at")
+        read_only_fields = ("public_id", "quantity_available")
+
+
+class LotRelationshipSerializer(TenantSerializer):
+    actor = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = LotRelationship
+        exclude = ("organization", "updated_at")
+        read_only_fields = ("actor", "created_at")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        source = attrs.get("source_lot")
+        target = attrs.get("target_lot")
+        if source and target:
+            if source.pk == target.pk:
+                raise serializers.ValidationError("Un lote no puede derivarse de sí mismo.")
+            if source.product_type != target.product_type:
+                raise serializers.ValidationError("Los lotes relacionados deben ser del mismo producto.")
+            if source.unit != target.unit:
+                raise serializers.ValidationError({"target_lot": "Los lotes relacionados deben usar la misma unidad."})
+            organization_id = self.context["view"].organization_id
+            edges = list(LotRelationship.objects.filter(organization_id=organization_id).values_list("source_lot_id", "target_lot_id"))
+            graph = {}
+            for parent, child in edges:
+                graph.setdefault(parent, set()).add(child)
+            pending = [target.pk]
+            visited = set()
+            while pending:
+                node = pending.pop()
+                if node == source.pk:
+                    raise serializers.ValidationError("La relación crearía un ciclo de trazabilidad.")
+                if node not in visited:
+                    visited.add(node)
+                    pending.extend(graph.get(node, ()))
+        return attrs
+
+
+class InventoryMovementSerializer(TenantSerializer):
+    actor = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = InventoryMovement
+        exclude = ("organization", "updated_at")
+        read_only_fields = ("actor", "created_at")
+
+
+class ExportSerializer(TenantSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    importer_name = serializers.CharField(source="importer.business_name", read_only=True)
+    allocations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExportOperation
+        exclude = ("organization", "updated_at")
+        read_only_fields = ("status", "responsible", "created_at")
+
+    def get_allocations(self, obj):
+        return [
+            {"lot_id": item.lot_id, "lot_code": item.lot.code, "quantity": str(item.quantity), "unit": item.unit}
+            for item in obj.allocations.all()
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        role = self.context["view"].get_membership().role.name
+        if role not in {"administrador", "superadmin", "exportaciones", "comercial", "financiero", "gerencia"}:
+            data.pop("commercial_value", None)
+            data.pop("currency", None)
+            data.pop("commercial_terms", None)
+            data.pop("notes", None)
+        return data
+
+
+class AllocationSerializer(TenantSerializer):
+    class Meta:
+        model = ExportLotAllocation
+        exclude = ("organization", "updated_at")
+        read_only_fields = ("reserved", "created_at")
+
+
+class ExportStatusHistorySerializer(serializers.ModelSerializer):
+    actor = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = ExportStatusHistory
+        fields = ("id", "previous_status", "new_status", "actor", "notes", "created_at")
+
+
+class TraceabilityEventSerializer(TenantSerializer):
+    actor = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = TraceabilityEvent
+        exclude = ("organization", "updated_at")
+        read_only_fields = ("actor", "created_at")
