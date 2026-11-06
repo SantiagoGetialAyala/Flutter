@@ -1,8 +1,10 @@
-# RiTech SAS — Gestión de exportaciones
+# AgroPremium — Gestión de exportaciones
 
 Aplicación Flutter con API Django REST, JWT y PostgreSQL para origen de café/cacao, exportaciones, cumplimiento documental, logística, finanzas y acceso por roles.
 
 El rediseño visual y el alta de empresas están explicados en [Diseño y organizaciones](documentacion/diseno-y-organizaciones.md).
+
+El rediseño centrado en operaciones, tareas y seguimiento está descrito en [Experiencia AgroPremium](documentacion/redisenio-agropremium.md).
 
 La implementación, los límites de cada perfil y el recorrido para probar las operaciones están en [Roles y flujos de negocio](documentacion/roles-y-flujos.md).
 

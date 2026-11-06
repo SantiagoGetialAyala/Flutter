@@ -91,7 +91,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Crea una cuenta para acceder a RiTech SAS.',
+                          'Crea una cuenta para acceder a AgroPremium.',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(height: 24),

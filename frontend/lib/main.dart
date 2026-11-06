@@ -16,7 +16,7 @@ class RiTechApp extends StatelessWidget {
     final authService = AuthService();
 
     return MaterialApp(
-      title: 'RiTech SAS',
+      title: 'AgroPremium',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       onGenerateRoute: AppRouter(authService: authService).onGenerateRoute,

@@ -46,6 +46,14 @@ class OrganizationScopedViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         from business.scoping import scope
         queryset = scope(super().get_queryset(), self.get_membership(), self.request.user)
+        # Filter inside the already scoped queryset; never widen tenant/owner access.
+        from rest_framework import serializers
+        fields = {field.name for field in queryset.model._meta.fields}
+        for name in ('export', 'lot', 'farm', 'plot', 'transport'):
+            value = self.request.query_params.get(name)
+            if name in fields and value:
+                related_id = serializers.IntegerField(min_value=1).run_validation(value)
+                queryset = queryset.filter(**{name + '_id': related_id})
         return queryset if queryset.ordered else queryset.order_by("pk")
 
     @transaction.atomic
@@ -227,6 +235,35 @@ class ExportViewSet(OrganizationScopedViewSet):
             queryset = queryset.filter(created_at__date__lte=params["date_to"])
         return queryset.distinct()
 
+    @action(detail=True, methods=['get'], url_path='map')
+    def operation_map(self, request, pk=None):
+        """Only recorded geography and confirmed events, under existing grants."""
+        export = self.get_object()
+        from business import models as bm
+        from business.scoping import scope
+        from users.access import permissions
+        role = self.get_membership().role.name
+        grants = permissions(role)
+        def rows(module, model, filters, fields):
+            if 'view' not in grants.get(module, []):
+                return []
+            return list(scope(model.objects.all(), self.get_membership(), request.user)
+                        .filter(**filters).distinct().values(*fields))
+        return Response({
+            'export': {'id': export.pk, 'code': export.code, 'status': export.status,
+                       'origin_country': export.origin_country, 'destination_country': export.destination_country},
+            'plots': rows('plots', Plot,
+                {'harvests__lots__export_allocations__export': export},
+                ['id', 'code', 'name', 'farm_id', 'farm__name', 'geometry']),
+            'events': rows('traceability-events', TraceabilityEvent, {'export': export},
+                ['id', 'event_type', 'event_at', 'location', 'notes']),
+            'transports': rows('transports', bm.Transport, {'export': export},
+                (['id', 'delivery_place', 'scheduled_delivery', 'actual_delivery', 'status'] if role == 'importador' else
+                 ['id', 'pickup_place', 'delivery_place', 'scheduled_pickup', 'scheduled_delivery', 'status'])),
+            'transport_events': rows('transport-events', bm.TransportEvent, {'transport__export': export},
+                ['id', 'event_type', 'event_at', 'notes', 'transport_id']),
+        })
+
     @transaction.atomic
     def perform_create(self, serializer):
         export = serializer.save(organization=self.organization, responsible=self.request.user, status="borrador")
@@ -257,20 +294,8 @@ class ExportViewSet(OrganizationScopedViewSet):
     def transition(self, request, pk=None):
         export = get_object_or_404(ExportOperation.objects.select_for_update(), pk=pk, pk__in=self.get_queryset().values('pk'))
         next_status = request.data.get("status")
-        transitions = {
-            "borrador": {"pendiente_documentacion", "cancelada"},
-            "pendiente_documentacion": {"en_revision", "cancelada"},
-            "en_revision": {"requiere_correcciones", "aprobada_despacho", "rechazada"},
-            "requiere_correcciones": {"pendiente_documentacion", "cancelada"},
-            "aprobada_despacho": {"preparacion_logistica", "bloqueada"},
-            "preparacion_logistica": {"transporte_terrestre", "embarcada", "bloqueada"},
-            "transporte_terrestre": {"embarcada", "bloqueada"},
-            "embarcada": {"transito_internacional", "bloqueada"},
-            "transito_internacional": {"arribada", "bloqueada"},
-            "arribada": {"entregada", "bloqueada"},
-            "entregada": {"cerrada"},
-            "bloqueada": {"pendiente_documentacion", "cancelada"},
-        }
+        from .workflow import TRANSITIONS
+        transitions = TRANSITIONS
         if next_status not in transitions.get(export.status, set()):
             raise ValidationError({"status": f"Transición no permitida desde {export.status}."})
         role = self.get_membership().role.name

@@ -186,11 +186,20 @@ class ExportSerializer(TenantSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     importer_name = serializers.CharField(source="importer.business_name", read_only=True)
     allocations = serializers.SerializerMethodField()
+    allowed_transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = ExportOperation
         exclude = ("organization", "updated_at")
         read_only_fields = ("status", "responsible", "created_at")
+
+    def get_allowed_transitions(self, obj):
+        from .workflow import allowed_transitions
+        role = self.context['view'].get_membership().role.name
+        if '_export_transition_grants' not in self.context:
+            from users.access import permissions
+            self.context['_export_transition_grants'] = permissions(role).get('exports', [])
+        return allowed_transitions(obj.status, role, self.context['_export_transition_grants'])
 
     def get_allocations(self, obj):
         return [

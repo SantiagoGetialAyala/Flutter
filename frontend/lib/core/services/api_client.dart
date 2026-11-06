@@ -159,7 +159,7 @@ class ApiClient {
         _requestTimeout,
         onTimeout: () {
           throw ApiException(
-            'No se pudo conectar con el servidor en ${ApiConfig.baseUrl}.',
+            'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
           );
         },
       );
@@ -167,7 +167,7 @@ class ApiClient {
       rethrow;
     } catch (_) {
       throw ApiException(
-        'No se pudo conectar con el servidor en ${ApiConfig.baseUrl}.',
+        'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
       );
     }
 
@@ -185,11 +185,22 @@ class ApiClient {
 
   dynamic _decode(String body) {
     if (body.isEmpty) return {};
-    return jsonDecode(body);
+    try {
+      return jsonDecode(body);
+    } on FormatException {
+      throw const ApiException(
+        'El servidor devolvió una respuesta que no pudimos leer. Inténtalo de nuevo.',
+      );
+    }
   }
 
   String _extractError(String body) {
-    final decoded = body.isEmpty ? null : jsonDecode(body);
+    dynamic decoded;
+    try {
+      decoded = body.isEmpty ? null : jsonDecode(body);
+    } on FormatException {
+      return 'El servidor no pudo completar la solicitud. Inténtalo de nuevo en unos momentos.';
+    }
     if (decoded is Map<String, dynamic>) {
       final detail = decoded['detail'] ?? decoded['non_field_errors'];
       if (detail is List && detail.isNotEmpty) return detail.first.toString();

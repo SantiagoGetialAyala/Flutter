@@ -62,6 +62,11 @@ class WorkspaceApi extends ApiClient {
             },
           ],
         }
+      : RegExp(r'^/(producers|orders)/\d+/$').hasMatch(path)
+      ? {
+          'id': 3,
+          'name': role == 'productor' ? 'Origen propio' : 'Pedido propio',
+        }
       : {
           'results': [
             {
@@ -137,9 +142,13 @@ void main() {
     final api = WorkspaceApi('productor');
     await openWorkspace(tester, api);
     expect(find.text('Lotes activos'), findsOneWidget);
+    await tester.tap(find.text('Buscar en gestión'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Producción e inventario'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Productores').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nuevo registro'));
+    await tester.tap(find.text('Nuevo productor'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
@@ -157,6 +166,10 @@ void main() {
   testWidgets('existing authorized origin can be edited', (tester) async {
     final api = WorkspaceApi('productor');
     await openWorkspace(tester, api);
+    await tester.tap(find.text('Buscar en gestión'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Producción e inventario'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Productores').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Editar'));

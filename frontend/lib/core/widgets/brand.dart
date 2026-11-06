@@ -24,29 +24,35 @@ class Brand extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 10),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'RiTech',
-            style: TextStyle(
-              fontSize: compact ? 23 : 29,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1,
-              color: light ? Colors.white : AppTheme.forest,
-            ),
-          ),
-          if (!compact)
-            Text(
-              'Exportación inteligente',
-              style: TextStyle(
-                fontSize: 11,
-                letterSpacing: .3,
-                color: light ? Colors.white70 : AppTheme.muted,
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'AgroPremium',
+                style: TextStyle(
+                  fontSize: compact ? 17 : 25,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
+                  color: light ? Colors.white : AppTheme.forest,
+                ),
               ),
-            ),
-        ],
+              if (!compact)
+                Text(
+                  'Exportación inteligente',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: .3,
+                    color: light ? Colors.white70 : AppTheme.muted,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     ],
   );

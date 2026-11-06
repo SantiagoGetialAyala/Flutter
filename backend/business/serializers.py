@@ -90,6 +90,17 @@ class BusinessSerializer(TenantSerializer):
         data = super().to_representation(instance)
         if isinstance(instance, m.Document):
             data['versions'] = list(instance.versions.values('id', 'number', 'filename', 'sha256', 'created_at'))
+            latest = instance.versions.first()
+            user_id = self.context['request'].user.pk
+            data['can_review'] = (instance.status == 'pendiente' and instance.owner_id != user_id and
+                (latest is None or latest.uploaded_by_id != user_id))
+            data['can_approve'] = (data['can_review'] and latest is not None and
+                (instance.expires_on is None or instance.expires_on >= timezone.localdate()))
+            data['can_submit'] = instance.status in ('borrador', 'correcciones', 'rechazado') and latest is not None
+        if isinstance(instance, m.Order):
+            data['can_confirm'] = (instance.received_at is None and
+                instance.export.importer.user_id == self.context['request'].user.pk and
+                instance.export.status in ('arribada', 'entregada', 'cerrada'))
         if self.context['view'].get_membership().role.name == 'importador':
             if isinstance(instance, m.Transport):
                 data = {key: value for key, value in data.items() if key in ('id', 'export', 'delivery_place', 'scheduled_delivery', 'actual_delivery', 'status')}

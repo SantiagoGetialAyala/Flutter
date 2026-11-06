@@ -157,6 +157,10 @@ class DesignApi extends ApiClient {
         ],
       };
     }
+    final detail = RegExp(r'^/exports/(\d+)/$').firstMatch(path);
+    if (detail != null) {
+      return exports.firstWhere((e) => '${e['id']}' == detail.group(1));
+    }
     if (path.startsWith('/exports/')) return {'results': exports, 'count': 3};
     return {'results': [], 'count': 0};
   }
@@ -287,7 +291,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Exportaciones'),
+          matching: find.text('Operaciones'),
         ),
       );
       await tester.pumpAndSettle();
@@ -326,9 +330,51 @@ void main() {
       size: const Size(1440, 960),
     );
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text('OPERACIÓN'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.widgetWithText(ListTile, 'Operaciones'), findsOneWidget);
     await capture(tester, 'inicio-escritorio');
+    await tester.tap(find.text('Buscar en gestión'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exportaciones y ventas'), findsOneWidget);
+    expect(find.text('Documentación'), findsOneWidget);
+    expect(find.text('Logística'), findsOneWidget);
+    // Tools stay hidden until their group is opened.
+    expect(find.widgetWithText(ListTile, 'Transportes'), findsNothing);
+    await tester.tap(find.text('Logística'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Transportes'), findsOneWidget);
+    await tester.tap(find.text('Documentación'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Transportes'), findsNothing);
+    expect(find.widgetWithText(ListTile, 'Documentos'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await capture(tester, 'gestion-escritorio');
+  });
+  testWidgets('mobile tools sheet expands groups and opens a tool', (
+    tester,
+  ) async {
+    await mount(tester, WorkspaceScreen(api: DesignApi(), user: demoUser));
+    await tester.tap(find.byTooltip('Buscar en gestión'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Logística'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Transportes'), findsOneWidget);
+    await tester.tap(find.text('Documentación'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Transportes'), findsNothing);
+    await tester.tap(find.widgetWithText(ListTile, 'Documentos'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Herramientas y catálogos disponibles para tu rol'),
+      findsNothing,
+    );
+    expect(
+      find.text(
+        'Sube los archivos de soporte, consulta sus versiones y revisa su aprobación.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Documentos'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
   testWidgets('login fits narrow mobile screens', (tester) async {
     await mount(
@@ -369,7 +415,11 @@ void main() {
       tester,
       WorkspaceScreen(api: FinanceDesignApi(), user: demoUser),
     );
+    await tester.tap(find.byTooltip('Buscar en gestión'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Finanzas'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Costos y pagos'));
     await tester.pumpAndSettle();
     expect(find.text('48.000'), findsWidgets);
     expect(find.text('48.200'), findsNothing);

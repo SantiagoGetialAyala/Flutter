@@ -9,6 +9,9 @@ import 'record_form.dart';
 import 'presentation.dart';
 import 'export_detail.dart';
 import 'finance_report.dart';
+import 'workflow.dart';
+import 'task_inbox.dart';
+import 'operation_map.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/brand.dart';
 
@@ -34,6 +37,72 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<Map<String, dynamic>> _organizations = [];
   List<Map<String, dynamic>> _records = [];
   String? _org, _module, _error;
+  String? _expandedSection;
+  int _destination = 0;
+  final _savedFilters = <String, Map<String, dynamic>>{};
+  String get _role => '${_workspace?['role'] ?? widget.user.role ?? ''}';
+  bool get _platform => widget.user.isPlatform && _org == null;
+  List<String> get _destinations => [
+    'Inicio',
+    workLabel(_role),
+    _platform ? 'Estado' : 'Mapa',
+    'Tareas',
+    'Perfil',
+  ];
+  List<Map<String, dynamic>> get _tasks =>
+      (_workspace?['pending_tasks'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+  String get _workModule => workModules(_role).firstWhere(
+    (key) => modules.any((m) => m['key'] == key),
+    orElse: () => modules.isEmpty ? '' : '${modules.first['key']}',
+  );
+
+  Future<void> _go(int destination) async {
+    if (destination == 1 && _workModule.isNotEmpty) {
+      await _selectModule(_workModule);
+    } else {
+      if (_module != null) _rememberFilters();
+      setState(() {
+        _destination = destination;
+        _module = null;
+      });
+      if (destination == 3) await _refreshTasks();
+    }
+  }
+
+  void _rememberFilters() {
+    if (_module != null) {
+      _savedFilters[_module!] = {
+        'search': _search,
+        'status': _status,
+        'page': _page,
+      };
+    }
+  }
+
+  Future<void> _refreshTasks() async {
+    final organization = _org;
+    try {
+      final data = await api.getMap('/workspace/');
+      if (mounted && _org == organization) setState(() => _workspace = data);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'No pudimos actualizar tus tareas. $e');
+      }
+    }
+  }
+
+  Future<void> _openTask(Map<String, dynamic> task) async {
+    final key = '${task['module']}';
+    if (!modules.any((m) => m['key'] == key)) return;
+    await _selectModule(key);
+    try {
+      if (mounted) await _detail({'id': task['record_id']});
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    }
+  }
+
   bool _loading = true, _loadingRecords = false;
   int _page = 1, _count = 0;
   String _search = '';
@@ -43,7 +112,15 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final _searchController = TextEditingController();
   ApiClient get api => widget.api;
   List<Map<String, dynamic>> get modules =>
-      (_workspace?['modules'] as List? ?? []).cast<Map<String, dynamic>>();
+      (_workspace?['modules'] as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (m) => <String, dynamic>{
+              ...m,
+              'label': moduleLabel('${m['key']}', '${m['label']}'),
+            },
+          )
+          .toList();
   Map<String, dynamic>? get selected =>
       modules.where((m) => m['key'] == _module).firstOrNull;
 
@@ -209,23 +286,44 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     });
   }
 
-  Future<void> _run(Future<void> Function() task) async {
+  Future<void> _run(
+    Future<void> Function() task, {
+    bool propagate = false,
+  }) async {
     try {
       await task();
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (propagate) rethrow;
+      if (mounted) {
+        setState(() => _error = '$e');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
     }
   }
 
   Future<void> _form([Map<String, dynamic>? record]) async {
     final module = selected;
     if (module == null) return;
+    Map<String, dynamic>? created;
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => RecordForm(api: api, module: module, record: record),
+      builder: (_) => RecordForm(
+        api: api,
+        module: module,
+        record: record,
+        onSaved: (r) => created = r,
+      ),
     );
     if (saved == true) {
       await _loadRecords();
+      if (record == null &&
+          module['key'] == 'exports' &&
+          created != null &&
+          mounted) {
+        await _detail(created!);
+      }
       if (_module == 'platform-organizations' || _module == 'organizations') {
         final organizations = await api.getAll('/organizations/');
         if (mounted) setState(() => _organizations = organizations);
@@ -249,9 +347,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     if (location != null) await file.saveTo(location.path);
   }
 
-  Future<void> _action(Map<String, dynamic> row, String action) async {
+  Future<void> _action(
+    Map<String, dynamic> row,
+    String action, {
+    String? moduleKey,
+  }) async {
+    final actionModule = moduleKey ?? _module;
     await _run(() async {
-      final path = '/$_module/${row['id']}/$action/';
+      final path = '/$actionModule/${row['id']}/$action/';
       if (action == 'upload') {
         final file = await openFile(
           acceptedTypeGroups: [
@@ -308,11 +411,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         if (notes == null) return;
         await api.post(path, {
           'notes': notes,
-          if (action == 'reject' && _module == 'documents') 'corrections': true,
+          if (action == 'reject' && actionModule == 'documents')
+            'corrections': true,
         });
       }
       await _loadRecords();
-    });
+    }, propagate: moduleKey != null);
   }
 
   Future<void> _showData(String title, dynamic value) async {
@@ -335,7 +439,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
-  Future<void> _transition(Map<String, dynamic> row) async {
+  Future<void> _transition(
+    Map<String, dynamic> row, {
+    bool propagate = false,
+  }) async {
     const transitions = <String, List<String>>{
       'borrador': ['pendiente_documentacion', 'cancelada'],
       'pendiente_documentacion': ['en_revision', 'cancelada'],
@@ -359,21 +466,24 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       'bloqueada': ['pendiente_documentacion', 'cancelada'],
     };
     final permissions = (selected?['permissions'] as List? ?? []);
-    final options = (transitions[row['status']] ?? [])
-        .where(
-          (s) => permissions.contains(
-            s == 'aprobada_despacho'
-                ? 'approve'
-                : [
-                    'requiere_correcciones',
-                    'rechazada',
-                    'bloqueada',
-                  ].contains(s)
-                ? 'reject'
-                : 'submit',
-          ),
-        )
-        .toList();
+    final options =
+        ((row['allowed_transitions'] as List?)?.cast<String>() ??
+                transitions[row['status']] ??
+                [])
+            .where(
+              (s) => permissions.contains(
+                s == 'aprobada_despacho'
+                    ? 'approve'
+                    : [
+                        'requiere_correcciones',
+                        'rechazada',
+                        'bloqueada',
+                      ].contains(s)
+                    ? 'reject'
+                    : 'submit',
+              ),
+            )
+            .toList();
     final next = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
@@ -387,7 +497,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           for (final option in options)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, option),
-              child: Text(option.replaceAll('_', ' ')),
+              child: Text(friendly(option)),
             ),
         ],
       ),
@@ -401,13 +511,40 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         'notes': notes,
       });
       await _loadRecords();
-    });
+    }, propagate: propagate);
+  }
+
+  bool _canRecordTransport(
+    Map<String, dynamic> module,
+    Map<String, dynamic> row,
+  ) =>
+      module['key'] == 'transports' &&
+      ['asignado', 'recogido', 'en_transito'].contains(row['status']) &&
+      modules.any(
+        (m) => m['key'] == 'transport-events' && m['can_create'] == true,
+      );
+
+  Future<void> _transportEvent(Map<String, dynamic> row) async {
+    final module = modules
+        .where((m) => m['key'] == 'transport-events')
+        .firstOrNull;
+    if (module == null || module['can_create'] != true) return;
+    final saved = await openTransportEventForm(
+      context: context,
+      api: api,
+      module: module,
+      transport: row,
+    );
+    if (saved == true) {
+      await _loadRecords();
+      await _refreshTasks();
+    }
   }
 
   Future<void> _detail(Map<String, dynamic> record) async {
-    if (_module == 'platform-organizations') {
+    if (_module != null && record['id'] != null) {
       try {
-        record = await api.getMap('/platform-organizations/${record['id']}/');
+        record = await api.getMap('/$_module/${record['id']}/');
         if (!mounted) return;
       } catch (e) {
         if (mounted) setState(() => _error = '$e');
@@ -420,11 +557,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         builder: (_) => ExportDetail(
           api: api,
           record: record,
+          modules: modules,
+          onResourceAction: (key, row, action) =>
+              _action(row, action, moduleKey: key),
           canViewDocuments: modules.any((m) => m['key'] == 'documents'),
           canTransition: (selected?['permissions'] as List? ?? []).any(
             (p) => ['submit', 'approve', 'reject'].contains(p),
           ),
-          onTransition: _transition,
+          onTransition: (row) => _transition(row, propagate: true),
         ),
       );
       return;
@@ -457,6 +597,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       ![
                         'id',
                         'public_id',
+                        'can_confirm',
+                        'can_review',
+                        'can_approve',
+                        'can_submit',
                         'created_at',
                         'updated_at',
                         'actor',
@@ -500,19 +644,58 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cerrar'),
           ),
+          if (_canRecordTransport(module, record))
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _transportEvent(record);
+              },
+              child: const Text('Registrar avance'),
+            ),
+          if (module['can_update'] == true &&
+              _canRecordTransport(module, record))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _form(record);
+              },
+              child: const Text('Editar asignación'),
+            ),
+          if (module['can_update'] == true &&
+              !_canRecordTransport(module, record))
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _form(record);
+              },
+              child: const Text('Editar'),
+            ),
+          for (final action in visibleRecordActions(module, record).take(2))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _action(record, '${action['key']}');
+              },
+              child: Text('${action['label']}'),
+            ),
         ],
       ),
     );
   }
 
   Future<void> _selectModule(String? value) async {
+    if (value != null && !modules.any((m) => m['key'] == value)) return;
     _searchDebounce?.cancel();
+    _rememberFilters();
+    final filters = _savedFilters[value];
     setState(() {
       _module = value;
-      _page = 1;
-      _search = '';
-      _status = '';
-      _searchController.clear();
+      _destination = value == null ? 0 : 1;
+      if (value != null) _expandedSection = sectionFor(value);
+      _page = filters?['page'] as int? ?? 1;
+      _search = filters?['search'] as String? ?? '';
+      _status = filters?['status'] as String? ?? '';
+      _searchController.text = _search;
     });
     if (value != null) await _loadRecords();
   }
@@ -533,6 +716,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     setState(() {
       _org = id;
       _module = null;
+      _destination = 0;
+      _savedFilters.clear();
       _status = '';
     });
     await _loadWorkspace();
@@ -577,9 +762,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       ),
                     ),
                     title: Text('${org['name']}'),
-                    subtitle: org['tax_id'] == '' || org['tax_id'] == null
-                        ? null
-                        : Text('NIT ${org['tax_id']}'),
+                    subtitle: Text(_contextRole('${org['id']}')),
                     trailing: _org == '${org['id']}'
                         ? const Icon(Icons.check_circle, color: AppTheme.forest)
                         : null,
@@ -730,47 +913,56 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   String get _organizationName =>
       '${_workspace?['organization'] ?? _organizations.where((o) => '${o['id']}' == _org).firstOrNull?['name'] ?? 'Tu espacio de trabajo'}';
 
-  List<Map<String, dynamic>> get _primaryModules {
-    final preferred = widget.user.isPlatform && _org == null
-        ? ['platform-organizations', 'platform-users', 'audit']
-        : [
-            'exports',
-            'lots',
-            'documents',
-            'transports',
-            'orders',
-            'finance',
-            'producers',
-          ];
-    return [
-      for (final key in preferred)
-        if (modules.any((m) => m['key'] == key))
-          modules.firstWhere((m) => m['key'] == key),
-    ].take(3).toList();
-  }
-
   Future<void> _allModules() async {
+    var query = '';
     final value = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .75,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            children: [
-              Text(
-                'Tu espacio de trabajo',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'Todas las herramientas de tu rol',
-                style: TextStyle(color: AppTheme.muted),
-              ),
-              ..._menuItems((key) => Navigator.pop(context, key)),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, updateMenu) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * .75,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              children: [
+                Text(
+                  'Gestión',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'Herramientas y catálogos disponibles para tu rol',
+                  style: TextStyle(color: AppTheme.muted),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  autofocus: false,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Buscar documentos, fincas, equipo…',
+                  ),
+                  onChanged: (v) => updateMenu(() => query = v),
+                ),
+                if (query.isNotEmpty &&
+                    !modules.any(
+                      (m) => '${m['label']} ${moduleHelp(m['key'] as String)}'
+                          .toLowerCase()
+                          .contains(query.toLowerCase()),
+                    ))
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'No encontramos herramientas con ese nombre. Prueba otra palabra.',
+                    ),
+                  ),
+                ..._menuItems(
+                  (key) => Navigator.pop(context, key),
+                  query: query,
+                  onMenuChanged: () => updateMenu(() {}),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -778,55 +970,78 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     if (value != null) await _selectModule(value == 'home' ? null : value);
   }
 
-  List<Widget> _menuItems(ValueChanged<String> onSelected) {
+  List<Widget> _menuItems(
+    ValueChanged<String> onSelected, {
+    VoidCallback? onMenuChanged,
+    String query = '',
+  }) {
     final result = <Widget>[];
-    for (final group in [
-      'OPERACIÓN',
-      'ORIGEN Y PRODUCTOS',
-      'MI ORGANIZACIÓN',
-      'PLATAFORMA',
-    ]) {
+    for (final group in [...navigationSections.keys, 'Otras herramientas']) {
       final items = modules
-          .where((m) => sectionFor(m['key'] as String) == group)
+          .where(
+            (m) =>
+                sectionFor(m['key'] as String) == group &&
+                '${m['label']} ${moduleHelp(m['key'] as String)}'
+                    .toLowerCase()
+                    .contains(query.toLowerCase()),
+          )
           .toList();
       if (items.isEmpty) continue;
+      final expanded = query.isNotEmpty || _expandedSection == group;
+      final active = items.any((m) => m['key'] == _module);
       result.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 8, 9),
-          child: Text(
-            group,
-            style: const TextStyle(
-              fontSize: 9,
-              letterSpacing: 1.4,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.muted,
+        Column(
+          children: [
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+              leading: Icon(moduleIcon(items.first['key'] as String), size: 21),
+              title: Text(
+                group,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: active ? AppTheme.forest : null,
+                ),
+              ),
+              subtitle: Text(
+                '${items.length} ${items.length == 1 ? 'herramienta' : 'herramientas'}',
+                style: const TextStyle(fontSize: 11, color: AppTheme.muted),
+              ),
+              trailing: Icon(
+                expanded ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+              ),
+              onTap: () {
+                setState(() => _expandedSection = expanded ? null : group);
+                // Refresh the mobile tools sheet as well as the desktop menu.
+                onMenuChanged?.call();
+              },
             ),
-          ),
+            if (expanded)
+              for (final m in items)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 2),
+                  child: Tooltip(
+                    message: moduleHelp(m['key'] as String),
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      selected: _module == m['key'],
+                      selectedTileColor: const Color(0xFFE7EFE4),
+                      selectedColor: AppTheme.forest,
+                      title: Text(
+                        '${m['label']}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () => onSelected(m['key'] as String),
+                    ),
+                  ),
+                ),
+          ],
         ),
       );
-      for (final m in items) {
-        result.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: ListTile(
-              dense: true,
-              minLeadingWidth: 22,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              selected: _module == m['key'],
-              selectedTileColor: const Color(0xFFE7EFE4),
-              selectedColor: AppTheme.forest,
-              leading: Icon(moduleIcon(m['key'] as String), size: 19),
-              title: Text(
-                '${m['label']}',
-                style: const TextStyle(fontSize: 12),
-              ),
-              onTap: () => onSelected(m['key'] as String),
-            ),
-          ),
-        );
-      }
     }
     return result;
   }
@@ -836,12 +1051,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     child: LayoutBuilder(
       builder: (context, bounds) {
         final wide = bounds.maxWidth >= 1000;
-        final primary = _primaryModules;
-        final navIndex = _module == null
-            ? 0
-            : primary.indexWhere((m) => m['key'] == _module) >= 0
-            ? primary.indexWhere((m) => m['key'] == _module) + 1
-            : primary.length + 1;
         return Row(
           children: [
             if (wide)
@@ -861,25 +1070,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       child: ListView(
                         padding: const EdgeInsets.symmetric(horizontal: 14),
                         children: [
-                          ListTile(
-                            dense: true,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            selected: _module == null,
-                            selectedTileColor: const Color(0xFFE7EFE4),
-                            selectedColor: AppTheme.forest,
-                            leading: const Icon(Icons.home_outlined, size: 20),
-                            title: const Text(
-                              'Inicio',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          for (var i = 0; i < _destinations.length; i++)
+                            ListTile(
+                              selected: _destination == i,
+                              selectedTileColor: const Color(0xFFE7EFE4),
+                              selectedColor: AppTheme.forest,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
+                              leading: Icon(
+                                _platform && i == 2
+                                    ? Icons.monitor_heart_outlined
+                                    : primaryIcons[i],
+                              ),
+                              title: Text(
+                                _destinations[i],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              onTap: () => _go(i),
                             ),
-                            onTap: () => _selectModule(null),
+                          const Divider(),
+                          ListTile(
+                            leading: const Icon(Icons.search),
+                            title: const Text('Buscar en gestión'),
+                            subtitle: const Text('Catálogos y herramientas'),
+                            onTap: _allModules,
                           ),
-                          ..._menuItems((value) => _selectModule(value)),
                         ],
                       ),
                     ),
@@ -916,7 +1134,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                           style: TextStyle(fontSize: 10),
                         ),
                         trailing: const Icon(Icons.more_horiz, size: 18),
-                        onTap: _profile,
+                        onTap: () => _go(4),
                       ),
                     ),
                   ],
@@ -969,9 +1187,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                             alignment: Alignment.topCenter,
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 1220),
-                              child: _module == null
-                                  ? _dashboard()
-                                  : _modulePage(),
+                              child: _mainContent(),
                             ),
                           ),
                   ),
@@ -981,31 +1197,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         border: Border(top: BorderSide(color: AppTheme.line)),
                       ),
                       child: NavigationBar(
-                        selectedIndex: navIndex,
-                        onDestinationSelected: (value) {
-                          if (value == 0) {
-                            _selectModule(null);
-                          } else if (value <= primary.length) {
-                            _selectModule(primary[value - 1]['key'] as String);
-                          } else {
-                            _allModules();
-                          }
-                        },
+                        selectedIndex: _destination,
+                        onDestinationSelected: _go,
                         destinations: [
-                          const NavigationDestination(
-                            icon: Icon(Icons.home_outlined),
-                            selectedIcon: Icon(Icons.home_rounded),
-                            label: 'Inicio',
-                          ),
-                          for (final m in primary)
+                          for (var i = 0; i < _destinations.length; i++)
                             NavigationDestination(
-                              icon: Icon(moduleIcon(m['key'] as String)),
-                              label: _shortLabel(m['key'] as String),
+                              icon: Icon(
+                                _platform && i == 2
+                                    ? Icons.monitor_heart_outlined
+                                    : primaryIcons[i],
+                              ),
+                              label: _destinations[i],
                             ),
-                          const NavigationDestination(
-                            icon: Icon(Icons.grid_view_rounded),
-                            label: 'Más',
-                          ),
                         ],
                       ),
                     ),
@@ -1015,6 +1218,200 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ],
         );
       },
+    ),
+  );
+
+  String _contextRole(String orgId) {
+    final contexts = (_workspace?['contexts'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    final entry = contexts
+        .where((c) => '${c['organization_id']}' == orgId)
+        .firstOrNull;
+    return entry == null
+        ? 'Acceso según tu membresía'
+        : friendly(entry['role__name']);
+  }
+
+  String _metricModule(Map<String, dynamic> metric) {
+    final key = metric['module'];
+    if (modules.any((m) => m['key'] == key)) return '$key';
+    final text = '${metric['label']}'.toLowerCase();
+    final candidates = text.contains('document')
+        ? ['documents']
+        : text.contains('lote')
+        ? ['lots']
+        : text.contains('pedido')
+        ? ['orders']
+        : text.contains('entrega') || text.contains('tránsito')
+        ? ['transports']
+        : [_workModule];
+    return candidates.firstWhere(
+      (key) => modules.any((m) => m['key'] == key),
+      orElse: () => _workModule,
+    );
+  }
+
+  Widget _mainContent() {
+    if (_module != null) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final key in workModules(_role))
+                          if (modules.any((m) => m['key'] == key))
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(moduleLabel(key, _shortLabel(key))),
+                                selected: key == _module,
+                                onSelected: (_) => _selectModule(key),
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Gestión y catálogos',
+                  onPressed: _allModules,
+                  icon: const Icon(Icons.tune),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _modulePage()),
+        ],
+      );
+    }
+    return switch (_destination) {
+      2 =>
+        _platform
+            ? _servicePage()
+            : OperationMap(
+                key: ValueKey('map-$_org'),
+                api: api,
+                modules: modules.map((m) => '${m['key']}').toSet(),
+              ),
+      3 => TaskInbox(
+        tasks: _tasks,
+        onOpen: _openTask,
+        onRefresh: _refreshTasks,
+      ),
+      4 => _profilePage(),
+      _ => _dashboard(),
+    };
+  }
+
+  Widget _profilePage() => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+    children: [
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.user.fullName,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              Text(widget.user.email),
+              const SizedBox(height: 14),
+              Text('Contexto de trabajo: $_organizationName'),
+              Text(
+                'Rol activo: ${_workspace?['role_label'] ?? widget.user.roleDisplay}',
+                style: const TextStyle(
+                  color: AppTheme.forest,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      FilledButton.icon(
+        onPressed: _organizationPicker,
+        icon: const Icon(Icons.swap_horiz),
+        label: const Text('Cambiar contexto de trabajo'),
+      ),
+      const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'Cada empresa determina tu rol y sus permisos. Al cambiar de empresa se vuelve a cargar tu acceso.',
+          style: TextStyle(color: AppTheme.muted),
+        ),
+      ),
+      Card(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.grid_view_rounded),
+              title: const Text('Gestión y catálogos'),
+              subtitle: const Text('Encuentra las herramientas de tu rol'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _allModules,
+            ),
+            ListTile(
+              leading: const Icon(Icons.mail_outline),
+              title: const Text('Aceptar invitación'),
+              onTap: _inviteAccept,
+            ),
+            ListTile(
+              leading: const Icon(Icons.manage_accounts_outlined),
+              title: const Text('Opciones de cuenta'),
+              onTap: _profile,
+            ),
+            if (widget.onLogout != null)
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: const Text('Cerrar sesión'),
+                onTap: widget.onLogout,
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _servicePage() => FutureBuilder<Map<String, dynamic>>(
+    future: api.getMap('/service-status/'),
+    builder: (context, snapshot) => ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Estado de la plataforma',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
+        if (snapshot.connectionState != ConnectionState.done)
+          const LinearProgressIndicator(),
+        if (snapshot.hasError)
+          Text('No pudimos consultar los servicios. ${snapshot.error}'),
+        if (snapshot.hasData) ...[
+          for (final key in ['api', 'database'])
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.monitor_heart_outlined),
+                title: Text(key == 'api' ? 'API' : 'Base de datos'),
+                subtitle: Text('${snapshot.data![key] ?? 'Sin información'}'),
+              ),
+            ),
+          Text(
+            'Última comprobación: ${dateText(snapshot.data!['checked_at'], time: true)}',
+          ),
+        ],
+        TextButton(
+          onPressed: () => setState(() {}),
+          child: const Text('Actualizar'),
+        ),
+      ],
     ),
   );
 
@@ -1031,7 +1428,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         'platform-users': 'Cuentas',
         'audit': 'Auditoría',
       }[key] ??
-      'Módulos';
+      '${modules.where((m) => m['key'] == key).firstOrNull?['label'] ?? 'Gestión'}';
 
   Widget _header(bool wide) => Container(
     padding: EdgeInsets.fromLTRB(
@@ -1069,7 +1466,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             children: [
               Text(
                 _module == null
-                    ? 'Hola, ${widget.user.fullName.split(' ').first}'
+                    ? _destination == 0
+                          ? 'Hola, ${widget.user.fullName.split(' ').first}'
+                          : _destinations[_destination]
                     : '${selected?['label'] ?? 'Tu espacio'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1117,12 +1516,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             tooltip: 'Notificaciones',
             icon: const Icon(Icons.notifications_none_rounded, size: 23),
           ),
-        if (!wide)
-          IconButton(
-            onPressed: _profile,
-            tooltip: 'Mi perfil',
-            icon: const Icon(Icons.account_circle_outlined, size: 23),
-          ),
+        IconButton(
+          onPressed: _allModules,
+          tooltip: 'Buscar en gestión',
+          icon: const Icon(Icons.search),
+        ),
       ],
     ),
   );
@@ -1168,27 +1566,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   );
 
   Widget _dashboard() {
-    final metrics = (_workspace!['metrics'] as List)
-        .cast<Map<String, dynamic>>();
+    final metrics = (_workspace!['metrics'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .take(5)
+        .toList();
     final primaryMetric = metrics.isEmpty ? null : metrics.first;
     final quick = [
-      for (final key in [
-        'exports',
-        'lots',
-        'documents',
-        'transports',
-        'finance',
-        'orders',
-        'producers',
-        'members',
-        'platform-organizations',
-        'platform-users',
-        'audit',
-        'grants',
-      ])
+      for (final key in [...workModules(_role), 'invitations'])
         if (modules.any((m) => m['key'] == key))
           modules.firstWhere((m) => m['key'] == key),
-    ].take(6).toList();
+    ].take(4).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       children: [
@@ -1225,98 +1612,102 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ),
         ),
         if (primaryMetric != null)
-          Container(
-            height: 155,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF377E58), Color(0xFF0F4937)],
-              ),
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -16,
-                  bottom: -35,
-                  child: Icon(
-                    widget.user.isPlatform && _org == null
-                        ? Icons.public_rounded
-                        : Icons.local_shipping_rounded,
-                    size: 176,
-                    color: Colors.white.withValues(alpha: .075),
-                  ),
+          InkWell(
+            onTap: () => _selectModule(_metricModule(primaryMetric)),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              height: 155,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF377E58), Color(0xFF0F4937)],
                 ),
-                Positioned(
-                  right: 22,
-                  top: 24,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .1),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: -16,
+                    bottom: -35,
                     child: Icon(
                       widget.user.isPlatform && _org == null
-                          ? Icons.public
-                          : Icons.sailing_outlined,
-                      color: const Color(0xFFD9E9CF),
-                      size: 31,
+                          ? Icons.public_rounded
+                          : Icons.local_shipping_rounded,
+                      size: 176,
+                      color: Colors.white.withValues(alpha: .075),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${primaryMetric['label']}',
-                        style: const TextStyle(
-                          color: Color(0xFFE2EEE2),
-                          fontSize: 13,
-                        ),
+                  Positioned(
+                    right: 22,
+                    top: 24,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .1),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        number(primaryMetric['value']),
-                        style: const TextStyle(
-                          fontSize: 39,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: -1.3,
-                          height: 1.15,
-                        ),
+                      child: Icon(
+                        widget.user.isPlatform && _org == null
+                            ? Icons.public
+                            : Icons.sailing_outlined,
+                        color: const Color(0xFFD9E9CF),
+                        size: 31,
                       ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.check_circle_outline,
-                            color: Color(0xFFC7DEBF),
-                            size: 13,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${primaryMetric['label']}',
+                          style: const TextStyle(
+                            color: Color(0xFFE2EEE2),
+                            fontSize: 13,
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              widget.user.isPlatform && _org == null
-                                  ? 'Vista general de la plataforma'
-                                  : 'Tu operación, conectada desde el origen',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFFD0E2CE),
-                                fontSize: 10,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          number(primaryMetric['value']),
+                          style: const TextStyle(
+                            fontSize: 39,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: -1.3,
+                            height: 1.15,
+                          ),
+                        ),
+                        const Spacer(),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_outline,
+                              color: Color(0xFFC7DEBF),
+                              size: 13,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                widget.user.isPlatform && _org == null
+                                    ? 'Vista general de la plataforma'
+                                    : 'Tu operación, conectada desde el origen',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFFD0E2CE),
+                                  fontSize: 10,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         const SizedBox(height: 13),
@@ -1329,12 +1720,33 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               runSpacing: 11,
               children: [
                 for (var i = 1; i < metrics.length; i++)
-                  SizedBox(width: width, child: _metricTile(metrics[i], i)),
+                  SizedBox(
+                    width: width,
+                    child: InkWell(
+                      onTap: () => _selectModule(_metricModule(metrics[i])),
+                      borderRadius: BorderRadius.circular(15),
+                      child: _metricTile(metrics[i], i),
+                    ),
+                  ),
               ],
             );
           },
         ),
         const SizedBox(height: 26),
+        _sectionTitle('Pendientes que atender', onView: () => _go(3)),
+        const SizedBox(height: 12),
+        TaskInbox(
+          tasks: _tasks,
+          onOpen: _openTask,
+          onRefresh: _refreshTasks,
+          compact: true,
+        ),
+        if (_tasks.any((t) => t['overdue'] == true))
+          _helper(
+            'Hay tareas vencidas',
+            'Abre Tareas para revisar las fechas y coordinar el siguiente paso.',
+          ),
+        const SizedBox(height: 24),
         _sectionTitle(
           'Accesos rápidos',
           subtitle: 'Lo que necesitas para avanzar',
@@ -1342,7 +1754,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, box) {
-            final columns = box.maxWidth > 750 ? 6 : 3;
+            final columns = box.maxWidth > 750 ? 4 : 2;
             final width = (box.maxWidth - (columns - 1) * 10) / columns;
             return Wrap(
               spacing: 10,
@@ -1424,7 +1836,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ],
           ),
         ],
-        for (final panel in (_workspace!['panels'] as List? ?? [])) ...[
+        for (final panel in (_workspace!['panels'] as List? ?? []).take(2)) ...[
           const SizedBox(height: 26),
           _sectionTitle(
             '${panel['label']}',
@@ -1437,7 +1849,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               'Cuando tu equipo empiece a trabajar, podrás seguirlo aquí.',
             )
           else
-            for (final item in panel['items'])
+            for (final item in (panel['items'] as List).take(3))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: panel['module'] == 'finance' && item['margen'] != null
@@ -1445,7 +1857,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     : RecordCard(
                         module: panel['module'] as String,
                         record: Map<String, dynamic>.from(item),
-                        onTap: () => _selectModule(panel['module'] as String),
+                        onTap: () async {
+                          await _selectModule(panel['module'] as String);
+                          if (mounted) {
+                            await _detail(Map<String, dynamic>.from(item));
+                          }
+                        },
                       ),
               ),
         ],
@@ -1706,27 +2123,22 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       children: [
         if (_module == 'finance' && m['can_report'] == true)
           FinanceReport(api: api, revision: _records.hashCode),
-        Row(
+        Text(
+          moduleHelp(_module!),
+          style: const TextStyle(fontSize: 13, color: AppTheme.muted),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Text(
-                _module == 'platform-organizations'
-                    ? 'Cada empresa, su propio equipo y operación'
-                    : 'Gestiona ${'${m['label']}'.toLowerCase()} desde un solo lugar',
-                style: const TextStyle(fontSize: 12, color: AppTheme.muted),
-              ),
-            ),
-            const SizedBox(width: 10),
             if (m['can_create'] == true)
               FilledButton.icon(
                 onPressed: () => _form(),
                 icon: const Icon(Icons.add, size: 17),
                 label: Text(
-                  _module == 'exports'
-                      ? 'Nueva exportación'
-                      : _module == 'platform-organizations'
-                      ? 'Nueva empresa'
-                      : 'Nuevo registro',
+                  moduleCreateLabel(_module!),
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
@@ -1829,12 +2241,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         if (_module == 'members')
           _helper(
             'Un equipo, distintos permisos',
-            'Incorpora personas desde Invitaciones al equipo. Aquí puedes cambiar su rol o revocar el acceso.',
+            'Incorpora personas desde Invitar personas. Aquí puedes cambiar su rol o revocar el acceso.',
           ),
         if (_module == 'platform-organizations')
           _helper(
             'Así empieza una empresa',
-            'Indica el correo del primer administrador al crearla. Recibirá un código de invitación para vincular su cuenta.',
+            'Indica el correo del primer administrador al crearla y comparte con esa persona el código de invitación que se genera.',
           ),
         if (_module == 'requirements')
           _helper(
@@ -1850,8 +2262,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         else ...[
           if (_records.isEmpty)
             _emptyPanel(
-              'Todo empieza con el primer registro',
-              'No hay resultados para esta búsqueda o todavía no se ha registrado información.',
+              _search.isNotEmpty || _status.isNotEmpty
+                  ? 'No encontramos coincidencias'
+                  : 'Aún no hay ${'${m['label']}'.toLowerCase()}',
+              _search.isNotEmpty || _status.isNotEmpty
+                  ? 'Prueba con otra búsqueda o cambia los filtros.'
+                  : m['can_create'] == true
+                  ? '${moduleHelp(_module!)} Para empezar, pulsa «${moduleCreateLabel(_module!)}».'
+                  : 'Los registros aparecerán aquí cuando tu equipo los agregue.',
             ),
           for (final row in _records)
             Padding(
@@ -1872,6 +2290,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       child: Wrap(
                         spacing: 4,
                         children: [
+                          if (_canRecordTransport(m, row))
+                            TextButton(
+                              onPressed: () => _transportEvent(row),
+                              child: const Text('Registrar avance'),
+                            ),
                           if (m['can_update'] == true)
                             TextButton(
                               onPressed: () => _form(row),
@@ -1880,7 +2303,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                                 style: TextStyle(fontSize: 11),
                               ),
                             ),
-                          for (final a in (m['actions'] as List).take(2))
+                          for (final a in visibleRecordActions(m, row).take(1))
                             TextButton(
                               onPressed: () => _action(row, a['key'] as String),
                               child: Text(
@@ -1907,9 +2330,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       : null,
                   icon: const Icon(Icons.chevron_left, size: 20),
                 ),
-                Text(
-                  '$_count registros · Página $_page',
-                  style: const TextStyle(fontSize: 11, color: AppTheme.muted),
+                Flexible(
+                  child: Text(
+                    '$_count registros · Página $_page',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, color: AppTheme.muted),
+                  ),
                 ),
                 IconButton(
                   onPressed: _page * 50 < _count
@@ -1940,6 +2366,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         _detail(row);
       } else if (key == 'transition') {
         _transition(row);
+      } else if (key == 'transport-event') {
+        _transportEvent(row);
       } else if (key == 'assign') {
         _assign(row);
       } else {
@@ -1948,14 +2376,20 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     },
     itemBuilder: (_) => [
       const PopupMenuItem(value: 'detail', child: Text('Ver detalle')),
+      if (_canRecordTransport(m, row))
+        const PopupMenuItem(
+          value: 'transport-event',
+          child: Text('Registrar avance'),
+        ),
       if (m['can_update'] == true)
         const PopupMenuItem(value: 'edit', child: Text('Editar')),
-      for (final a in m['actions'])
+      for (final a in visibleRecordActions(m, row))
         PopupMenuItem<String>(
           value: a['key'] as String,
           child: Text('${a['label']}'),
         ),
       if (_module == 'exports' &&
+          (row['allowed_transitions'] as List? ?? ['legacy']).isNotEmpty &&
           (m['permissions'] as List).any(
             (p) => ['submit', 'approve', 'reject'].contains(p),
           ))

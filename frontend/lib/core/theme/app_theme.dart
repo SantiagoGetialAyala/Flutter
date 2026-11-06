@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const forest = Color(0xFF14543C);
+  static const forest = Color(0xFF1F4D3A);
   static const ink = Color(0xFF172C24);
-  static const muted = Color(0xFF76817B);
-  static const background = Color(0xFFF6F7F4);
+  static const muted = Color(0xFF626F65);
+  static const background = Color(0xFFF7F3EB);
+  static const ivory = Color(0xFFFBF9F5);
+  static const coffee = Color(0xFF6B4F3A);
+  static const gold = Color(0xFFC8A96B);
   static const line = Color(0xFFE7EBE5);
 
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
       seedColor: forest,
       primary: forest,
-      secondary: const Color(0xFF966C42),
+      secondary: const Color(0xFF6B4F3A),
       surface: Colors.white,
       onSurface: ink,
     );

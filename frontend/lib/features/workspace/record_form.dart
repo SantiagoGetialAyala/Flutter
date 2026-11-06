@@ -8,10 +8,19 @@ class RecordForm extends StatefulWidget {
     required this.api,
     required this.module,
     this.record,
+    this.initialValues = const {},
+    this.lockedFields = const {},
+    this.onSaved,
+    this.saveLabel,
+    this.intro,
   });
   final ApiClient api;
   final Map<String, dynamic> module;
   final Map<String, dynamic>? record;
+  final Map<String, dynamic> initialValues;
+  final Set<String> lockedFields;
+  final ValueChanged<Map<String, dynamic>>? onSaved;
+  final String? saveLabel, intro;
   @override
   State<RecordForm> createState() => _RecordFormState();
 }
@@ -47,7 +56,10 @@ class _RecordFormState extends State<RecordForm> {
           continue;
         }
         final key = field['key'] as String;
-        final initial = widget.record?[key] ?? field['default'];
+        final initial =
+            widget.record?[key] ??
+            widget.initialValues[key] ??
+            field['default'];
         if (field['type'] == 'bool') {
           _values[key] =
               initial ??
@@ -65,12 +77,21 @@ class _RecordFormState extends State<RecordForm> {
         }
       }
       final endpoints = fields
-          .where((f) => f['type'] == 'relation')
+          .where(
+            (f) =>
+                f['type'] == 'relation' &&
+                !widget.lockedFields.contains(f['key']),
+          )
           .map((f) => f['endpoint'] as String)
           .toSet();
       await Future.wait(
         endpoints.map((endpoint) async {
-          _relations[endpoint] = await widget.api.getAll('/$endpoint/');
+          final exportId = widget.initialValues['export'];
+          final query =
+              exportId != null && ['documents', 'transports'].contains(endpoint)
+              ? '?export=$exportId'
+              : '';
+          _relations[endpoint] = await widget.api.getAll('/$endpoint/$query');
         }),
       );
     } catch (e) {
@@ -178,6 +199,7 @@ class _RecordFormState extends State<RecordForm> {
           ),
         );
       }
+      widget.onSaved?.call(response);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -329,10 +351,41 @@ class _RecordFormState extends State<RecordForm> {
     );
   }
 
+  bool _isVisible(Map<String, dynamic> f) =>
+      !widget.lockedFields.contains(f['key']) &&
+      (widget.record == null || f['key'] != 'administrator_email');
+  bool _isEssential(Map<String, dynamic> f) {
+    if (!_isVisible(f)) return false;
+    if (![
+      'exports',
+      'lots',
+      'farms',
+      'documents',
+      'transports',
+    ].contains(widget.module['key'])) {
+      return true;
+    }
+    return f['required'] == true ||
+        [
+          'code',
+          'name',
+          'destination_country',
+          'importer',
+          'estimated_departure',
+          'estimated_arrival',
+          'currency',
+          'title',
+          'document_type',
+          'export',
+        ].contains(f['key']);
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(
-      '${widget.record == null ? 'Nuevo' : 'Editar'} · ${widget.module['label']}',
+      widget.module['key'] == 'exports' && widget.record == null
+          ? 'Iniciar operación'
+          : '${widget.record == null ? 'Nuevo' : 'Editar'} · ${widget.module['label']}',
     ),
     content: SizedBox(
       width: 620,
@@ -355,14 +408,36 @@ class _RecordFormState extends State<RecordForm> {
                           ),
                         ),
                       ),
-                    for (final field in fields.where(
-                      (f) =>
-                          widget.record == null ||
-                          f['key'] != 'administrator_email',
-                    ))
+                    if (widget.intro != null ||
+                        (widget.module['key'] == 'exports' &&
+                            widget.record == null))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: Text(
+                          widget.intro ??
+                              'Paso 1 de 5 · Datos comerciales y destino. Guarda un borrador; los lotes, documentos y transporte se coordinan después con tu equipo.',
+                        ),
+                      ),
+                    for (final field in fields.where(_isEssential))
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: _field(field),
+                      ),
+                    if (fields.any((f) => _isVisible(f) && !_isEssential(f)))
+                      ExpansionTile(
+                        title: const Text('Más detalles (opcional)'),
+                        subtitle: const Text('Puedes completarlos después'),
+                        tilePadding: EdgeInsets.zero,
+                        maintainState: true,
+                        children: [
+                          for (final field in fields.where(
+                            (f) => _isVisible(f) && !_isEssential(f),
+                          ))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: _field(field),
+                            ),
+                        ],
                       ),
                   ],
                 ),
@@ -376,8 +451,65 @@ class _RecordFormState extends State<RecordForm> {
       ),
       FilledButton(
         onPressed: _saving || _loading ? null : _save,
-        child: Text(_saving ? 'Guardando…' : 'Guardar'),
+        child: Text(
+          _saving
+              ? 'Guardando…'
+              : widget.saveLabel ??
+                    (widget.module['key'] == 'exports' && widget.record == null
+                        ? 'Guardar borrador'
+                        : 'Guardar'),
+        ),
       ),
     ],
+  );
+}
+
+Future<bool?> openTransportEventForm({
+  required BuildContext context,
+  required ApiClient api,
+  required Map<String, dynamic> module,
+  required Map<String, dynamic> transport,
+  dynamic exportId,
+}) {
+  final state = transport['status'];
+  final permitted =
+      {
+        'asignado': ['recogida'],
+        'recogido': ['inicio'],
+        'en_transito': ['entrega'],
+      }[state] ??
+      <String>[];
+  final fields = (module['fields'] as List)
+      .cast<Map<String, dynamic>>()
+      .map(
+        (f) => f['key'] == 'event_type'
+            ? <String, dynamic>{
+                ...f,
+                'choices': (f['choices'] as List)
+                    .where(
+                      (c) => [
+                        ...permitted,
+                        'seguimiento',
+                        'incidencia',
+                      ].contains(c['value']),
+                    )
+                    .toList(),
+              }
+            : f,
+      )
+      .toList();
+  return showDialog<bool>(
+    context: context,
+    builder: (_) => RecordForm(
+      api: api,
+      module: {...module, 'fields': fields},
+      initialValues: {
+        'transport': transport['id'],
+        'export': exportId ?? transport['export'],
+      },
+      lockedFields: {'transport'},
+      intro:
+          'Envío #${transport['id']}. Para recogida, salida o entrega, selecciona un documento con archivo de evidencia. Puedes prepararlo desde Documentos.',
+    ),
   );
 }

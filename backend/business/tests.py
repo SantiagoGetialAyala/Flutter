@@ -326,3 +326,119 @@ class RoleBusinessTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['export'], self.export.pk)
+
+    def test_task_feed_respects_owner_tenant_and_action_grants(self):
+        own = m.Activity.objects.create(organization=self.org, export=self.export,
+            title='Mi trabajo', assigned_to=self.users['exportaciones'], due_at=timezone.now() - timedelta(days=1))
+        m.Activity.objects.create(organization=self.org, export=self.export,
+            title='Trabajo ajeno', assigned_to=self.users['documental'], due_at=timezone.now())
+        m.Activity.objects.create(organization=self.other_org, export=self.other_export,
+            title='Otra organización', assigned_to=self.users['exportaciones'], due_at=timezone.now())
+        self.login('exportaciones')
+        response = self.client.get('/api/workspace/')
+        tasks = response.data['pending_tasks']
+        titles = {task['title'] for task in tasks}
+        self.assertIn('Mi trabajo', titles)
+        self.assertNotIn('Trabajo ajeno', titles)
+        self.assertNotIn('Otra organización', titles)
+        self.assertTrue(next(t for t in tasks if t['record_id'] == own.pk and t['module'] == 'activities')['overdue'])
+        role = Role.objects.get(name='exportaciones')
+        RoleGrant.objects.create(role=role, module='activities', action='update', allowed=False)
+        tasks = self.client.get('/api/workspace/').data['pending_tasks']
+        self.assertFalse(any(t['module'] == 'activities' for t in tasks))
+
+    def test_contexts_are_only_active_memberships(self):
+        Membership.objects.create(user=self.users['exportaciones'], organization=self.other_org,
+            role=Role.objects.get(name='documental'))
+        self.login('exportaciones')
+        contexts = self.client.get('/api/workspace/').data['contexts']
+        self.assertEqual({c['role__name'] for c in contexts}, {'exportaciones', 'documental'})
+        self.other_org.is_active = False
+        self.other_org.save()
+        contexts = self.client.get('/api/workspace/').data['contexts']
+        self.assertEqual(len(contexts), 1)
+
+    def test_export_related_filters_do_not_mix_dossiers(self):
+        m.Activity.objects.create(organization=self.org, export=self.export, title='Expediente uno',
+            assigned_to=self.users['exportaciones'], due_at=timezone.now())
+        m.Activity.objects.create(organization=self.org, export=self.other_export, title='Expediente dos',
+            assigned_to=self.users['exportaciones'], due_at=timezone.now())
+        response = self.client.get(f'/api/activities/?export={self.export.pk}')
+        rows = response.data['results']
+        self.assertEqual([r['title'] for r in rows], ['Expediente uno'])
+        self.assertEqual(self.client.get('/api/activities/?export=invalid').status_code, 400)
+
+    def test_map_only_includes_linked_geography_and_authorized_events(self):
+        from operations.models import Plot, Harvest, ExportLotAllocation, TraceabilityEvent
+        farm = Farm.objects.create(organization=self.org, producer=self.producer, code='F-MAP', name='Finca', area=1)
+        plot = Plot.objects.create(organization=self.org, farm=farm, code='P-MAP', crop_type='cafe', area=1,
+            geometry={'type': 'Point', 'coordinates': [-76.6, 1.2]})
+        harvest = Harvest.objects.create(organization=self.org, plot=plot, harvest_date=date.today(), product_type='cafe', quantity=10)
+        self.lot.harvest = harvest
+        self.lot.save()
+        ExportLotAllocation.objects.create(organization=self.org, export=self.export, lot=self.lot, quantity=5)
+        Plot.objects.create(organization=self.org, farm=farm, code='P-OTHER', crop_type='cafe', area=1,
+            geometry={'type': 'Point', 'coordinates': [-75, 2]})
+        TraceabilityEvent.objects.create(organization=self.org, export=self.export, lot=self.lot,
+            event_type='origen', event_at=timezone.now(), actor=self.users['administrador'], location={'lat': 1.2, 'lng': -76.6})
+        response = self.client.get(f'/api/exports/{self.export.pk}/map/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([p['code'] for p in response.data['plots']], ['P-MAP'])
+        self.assertEqual(len(response.data['events']), 1)
+        self.login('importador')
+        response = self.client.get(f'/api/exports/{self.export.pk}/map/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['plots'], [])
+        self.assertEqual(response.data['events'], [])
+        self.assertEqual(self.client.get(f'/api/exports/{self.other_export.pk}/map/').status_code, 404)
+
+    def test_transition_hints_follow_role_status_and_revoked_grants(self):
+        self.export.status = 'en_revision'
+        self.export.save()
+        self.login('exportaciones')
+        data = self.client.get(f'/api/exports/{self.export.pk}/').data
+        self.assertEqual(data['allowed_transitions'], [])
+        self.login('documental')
+        data = self.client.get(f'/api/exports/{self.export.pk}/').data
+        self.assertIn('aprobada_despacho', data['allowed_transitions'])
+        RoleGrant.objects.create(role=Role.objects.get(name='documental'), module='exports', action='approve', allowed=False)
+        data = self.client.get(f'/api/exports/{self.export.pk}/').data
+        self.assertNotIn('aprobada_despacho', data['allowed_transitions'])
+        self.assertEqual(self.post(f'exports/{self.export.pk}/transition/', {'status': 'aprobada_despacho'}).status_code, 403)
+
+    def test_importer_map_preserves_transport_field_redaction(self):
+        m.Transport.objects.create(organization=self.org, export=self.export,
+            assigned_to=self.users['logistica'], pickup_place='Origen interno privado',
+            delivery_place='Destino público', scheduled_pickup=timezone.now())
+        self.login('importador')
+        response = self.client.get(f'/api/exports/{self.export.pk}/map/')
+        self.assertEqual(response.status_code, 200, response.data)
+        transport = response.data['transports'][0]
+        self.assertEqual(transport['delivery_place'], 'Destino público')
+        self.assertNotIn('pickup_place', transport)
+        self.assertNotIn('scheduled_pickup', transport)
+
+    def test_only_linked_importer_gets_order_confirmation_hint_and_task(self):
+        self.export.status = 'arribada'
+        self.export.save()
+        order = m.Order.objects.create(organization=self.org, export=self.export,
+            reference='PED-1', description='Pedido', quantity=10)
+        self.login('administrador')
+        self.assertFalse(self.client.get(f'/api/orders/{order.pk}/').data['can_confirm'])
+        self.assertFalse(any(t['module'] == 'orders' for t in self.client.get('/api/workspace/').data['pending_tasks']))
+        self.login('importador')
+        self.assertTrue(self.client.get(f'/api/orders/{order.pk}/').data['can_confirm'])
+        self.assertTrue(any(t['module'] == 'orders' for t in self.client.get('/api/workspace/').data['pending_tasks']))
+
+    def test_document_review_task_excludes_own_uploads(self):
+        doc = m.Document.objects.create(organization=self.org, export=self.export,
+            owner=self.users['administrador'], title='Preparado por quien revisa', document_type='origen', status='borrador')
+        self.login('documental')
+        self.upload(doc.pk)
+        doc.status = 'pendiente'
+        doc.save()
+        data = self.client.get(f'/api/documents/{doc.pk}/').data
+        self.assertFalse(data['can_review'])
+        self.assertFalse(data['can_approve'])
+        tasks = self.client.get('/api/workspace/').data['pending_tasks']
+        self.assertFalse(any(t['module'] == 'documents' and t['record_id'] == doc.pk for t in tasks))

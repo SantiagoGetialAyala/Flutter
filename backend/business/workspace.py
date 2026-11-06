@@ -153,7 +153,33 @@ class WorkspaceView(APIView):
                     item['margen'] = item['ingreso'] - item['costo']
                     item['variacion_presupuestaria'] = item['costo'] - item['presupuesto']
                 panels.append({'label': 'Rentabilidad por operación', 'module': 'finance', 'items': sorted(margins.values(), key=lambda row: row['margen'], reverse=True)})
-        return Response({'role': role, 'role_label': dict(Role.ROLE_CHOICES).get(role, role), 'organization': membership.organization.name if membership else 'Administración de plataforma', 'modules': modules, 'metrics': counters, 'panels': panels, 'recent_activity': list(recent.values('action', 'resource_type', 'created_at')[:10])})
+        from .task_feed import pending_tasks
+        tasks = pending_tasks(membership, request.user, allowed) if not platform else [
+            {'id': f'technical-incidents:{row.pk}', 'module': 'technical-incidents',
+             'record_id': row.pk, 'export_id': None, 'title': row.title,
+             'status': row.status, 'due_at': None, 'overdue': False}
+            for row in m.TechnicalIncident.objects.exclude(status='resuelto').order_by('created_at')[:40]
+            if {'view', 'update'}.issubset(allowed.get('technical-incidents', []))
+        ]
+        contexts = list(Membership.objects.filter(user=request.user, is_active=True,
+            organization__is_active=True, role__is_active=True).values(
+                'organization_id', 'organization__name', 'role__name'))
+        # Metrics are links to permitted tools rather than decorative totals.
+        for counter in counters:
+            label = counter['label'].lower()
+            candidates_for_link = [
+                ('document', 'documents'), ('certific', 'documents'), ('finca', 'farms'),
+                ('lote', 'lots'), ('pago', 'finance'), ('cotiz', 'quotes'), ('cambio', 'exchange-rates'),
+                ('pedido', 'orders'), ('transport', 'transports'), ('recogida', 'transports'),
+                ('entrega', 'transports'), ('tránsito', 'transports'), ('inciden', 'incidents'),
+                ('organizacion', 'platform-organizations'), ('usuario', 'platform-users'),
+                ('seguridad', 'audit'), ('validacion', 'compliance'),
+            ]
+            counter['module'] = next((key for word, key in candidates_for_link
+                if word in label and 'view' in allowed.get(key, [])),
+                next((key for key in ('exports', 'lots', 'orders', 'platform-organizations')
+                    if 'view' in allowed.get(key, [])), modules[0]['key'] if modules else None))
+        return Response({'pending_tasks': tasks, 'contexts': contexts, 'role': role, 'role_label': dict(Role.ROLE_CHOICES).get(role, role), 'organization': membership.organization.name if membership else 'Administración de plataforma', 'modules': modules, 'metrics': counters, 'panels': panels, 'recent_activity': list(recent.values('action', 'resource_type', 'created_at')[:10])})
 
 
 class TeamView(APIView):
