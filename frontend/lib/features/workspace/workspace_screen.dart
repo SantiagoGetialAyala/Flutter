@@ -38,6 +38,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<Map<String, dynamic>> _records = [];
   String? _org, _module, _error;
   String? _expandedSection;
+  bool _moreTools = false;
   int _destination = 0;
   final _savedFilters = <String, Map<String, dynamic>>{};
   String get _role => '${_workspace?['role'] ?? widget.user.role ?? ''}';
@@ -312,6 +313,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       builder: (_) => RecordForm(
         api: api,
         module: module,
+        modules: modules,
         record: record,
         onSaved: (r) => created = r,
       ),
@@ -534,6 +536,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       api: api,
       module: module,
       transport: row,
+      modules: modules,
     );
     if (saved == true) {
       await _loadRecords();
@@ -976,10 +979,28 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     String query = '',
   }) {
     final result = <Widget>[];
+    if (!_platform) {
+      result.add(
+        SwitchListTile(
+          dense: true,
+          title: const Text('Más herramientas'),
+          subtitle: const Text('Mostrar funciones secundarias'),
+          value: _moreTools,
+          onChanged: (value) {
+            setState(() => _moreTools = value);
+            onMenuChanged?.call();
+          },
+        ),
+      );
+    }
     for (final group in [...navigationSections.keys, 'Otras herramientas']) {
       final items = modules
           .where(
             (m) =>
+                (_platform ||
+                    _moreTools ||
+                    query.isNotEmpty ||
+                    essentialModules(_role).contains(m['key'])) &&
                 sectionFor(m['key'] as String) == group &&
                 '${m['label']} ${moduleHelp(m['key'] as String)}'
                     .toLowerCase()
@@ -1544,7 +1565,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Acepta la invitación de tu empresa para empezar a trabajar. Cada organización tiene su propio equipo, datos y permisos.',
+              'Pide al administrador que abra Equipo → Invitar personas, ingrese tu correo y seleccione tu función (por ejemplo, Productor). Si aún no tienes cuenta, créala con ese mismo correo y entrarás automáticamente. Si ya tienes cuenta, acepta aquí el código. Al entrar como productor, registra tu perfil, finca y lote.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.muted),
             ),
@@ -1572,13 +1593,38 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         .toList();
     final primaryMetric = metrics.isEmpty ? null : metrics.first;
     final quick = [
-      for (final key in [...workModules(_role), 'invitations'])
+      for (final key in {...workModules(_role), 'invitations'})
         if (modules.any((m) => m['key'] == key))
           modules.firstWhere((m) => m['key'] == key),
     ].take(4).toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       children: [
+        if (!_platform)
+          Card(
+            child: ExpansionTile(
+              initiallyExpanded: true,
+              title: Text('Tu función: ${_workspace?['role_label'] ?? _role}'),
+              subtitle: const Text('Qué hacer y dónde empezar'),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(roleInstructions(_role)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final key in essentialModules(_role).take(3))
+                      if (modules.any((m) => m['key'] == key))
+                        TextButton(
+                          onPressed: () => _selectModule(key),
+                          child: Text('Ir a ${_shortLabel(key)}'),
+                        ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         InkWell(
           onTap: _organizationPicker,
           borderRadius: BorderRadius.circular(30),
@@ -2236,7 +2282,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         if (_module == 'invitations')
           _helper(
             'Invita a tu equipo',
-            'Comparte el código de la invitación con la persona indicada. Debe aceptarlo usando el mismo correo.',
+            'Indica a la persona que cree su cuenta con el correo invitado. Su empresa y rol se asignan automáticamente.',
           ),
         if (_module == 'members')
           _helper(
@@ -2246,7 +2292,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         if (_module == 'platform-organizations')
           _helper(
             'Así empieza una empresa',
-            'Indica el correo del primer administrador al crearla y comparte con esa persona el código de invitación que se genera.',
+            'Indica el correo del primer administrador. Esa persona crea su cuenta con el mismo correo y entra automáticamente a la empresa.',
           ),
         if (_module == 'requirements')
           _helper(

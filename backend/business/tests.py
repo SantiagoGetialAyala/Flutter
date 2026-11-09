@@ -20,7 +20,7 @@ class RoleBusinessTests(TestCase):
         self.other_org = Organization.objects.create(name='Otra empresa')
         self.users = {}
         for role, _ in Role.ROLE_CHOICES:
-            obj, _ = Role.objects.get_or_create(name=role)
+            obj, _ = Role.objects.update_or_create(name=role, defaults={'is_active': True})
             user = User.objects.create_user(email=f'{role}@test.local', password='Valid-Password-123!', role=obj)
             self.users[role] = user
             if role != 'superadmin':
@@ -193,14 +193,14 @@ class RoleBusinessTests(TestCase):
         self.assertEqual(self.post('documents/1/approve/', {}).status_code, 403)
 
     def test_invitation_acceptance_role_revocation_and_no_global_escalation(self):
-        invitation = self.post('invitations/', {'email': self.users['importador'].email, 'role': 'documental'})
+        invitation = self.post('invitations/', {'email': self.users['importador'].email, 'role': 'productor'})
         self.assertEqual(invitation.status_code, 201, invitation.data)
         self.assertEqual(self.post('invitations/', {'email': 'x@test.local', 'role': 'superadmin'}).status_code, 400)
         self.login('productor')
         self.assertEqual(self.post('invitations/accept/', {'token': invitation.data['token']}).status_code, 400)
         self.login('importador')
         self.assertEqual(self.post('invitations/accept/', {'token': invitation.data['token']}).status_code, 200)
-        self.assertEqual(Membership.objects.get(user=self.users['importador']).role.name, 'documental')
+        self.assertEqual(Membership.objects.get(user=self.users['importador']).role.name, 'productor')
         self.login('administrador')
         member = Membership.objects.get(user=self.users['importador'])
         self.assertEqual(self.client.patch(f'/api/members/{member.pk}/', {'is_active': False}, format='json').status_code, 200)
@@ -442,3 +442,176 @@ class RoleBusinessTests(TestCase):
         self.assertFalse(data['can_approve'])
         tasks = self.client.get('/api/workspace/').data['pending_tasks']
         self.assertFalse(any(t['module'] == 'documents' and t['record_id'] == doc.pk for t in tasks))
+
+    def test_export_form_offers_all_eu_destinations(self):
+        self.login('exportaciones')
+        modules = self.client.get('/api/workspace/').data['modules']
+        export = next(m for m in modules if m['key'] == 'exports')
+        field = next(f for f in export['fields'] if f['key'] == 'destination_country')
+        self.assertEqual(field['type'], 'choice')
+        self.assertEqual(len(field['choices']), 27)
+        self.assertTrue({'España', 'Chequia', 'Suecia', 'Malta', 'Chipre'}.issubset(
+            {c['value'] for c in field['choices']}))
+
+    def test_documented_minimal_flow_from_origin_to_closed_export(self):
+        def create(path, data):
+            response = self.post(path + '/', data)
+            self.assertEqual(response.status_code, 201, response.data)
+            return response.data
+
+        self.login('productor')
+        farm = create('farms', {'producer': self.producer.pk, 'name': 'Finca prueba',
+            'area': 2, 'department': 'Antioquia', 'municipality': 'Medellín',
+            'geometry': {'type': 'Point', 'coordinates': [-75.58, 6.25]},
+            'new_plots': [{'name': 'Área principal', 'area': 2, 'crop_type': 'cafe',
+                'geometry': {'type': 'Point', 'coordinates': [-75.58, 6.25]}}]})
+        harvest = create('harvests', {'plot': farm['plots'][0]['id'],
+            'harvest_date': timezone.localdate().isoformat(), 'product_type': 'cafe',
+            'quantity': 1000, 'unit': 'kg'})
+        lot = create('lots', {'producer': self.producer.pk, 'code': 'PRUEBA-LOTE-001',
+            'harvest': harvest['id'], 'product_type': 'cafe', 'quantity_initial': 1000, 'unit': 'kg'})
+        self.login('administrador')
+        export = create('exports', {'code': 'PRUEBA-EXP-001', 'importer': self.buyer.pk,
+            'destination_country': 'Alemania', 'currency': 'EUR'})
+        export_id = export['id']
+        create('export-allocations', {'export': export_id, 'lot': lot['id'], 'quantity': 100, 'unit': 'kg'})
+        order = create('orders', {'export': export_id, 'reference': 'PRUEBA-PED-001',
+            'description': '100 kg de café', 'quantity': 100, 'unit': 'kg'})
+        geography = self.client.get(f'/api/exports/{export_id}/map/')
+        self.assertEqual(geography.status_code, 200)
+        self.assertEqual(geography.data['plots'][0]['id'], farm['plots'][0]['id'])
+        doc = create('documents', {'export': export_id, 'title': 'Origen prueba',
+            'document_type': 'origen', 'shared_with_client': True})
+        self.upload(doc['id'])
+        self.assertEqual(self.post(f'documents/{doc["id"]}/submit/', {}).status_code, 200)
+
+        def transition(state):
+            response = self.post(f'exports/{export_id}/transition/', {'status': state})
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data['status'], state)
+
+        transition('pendiente_documentacion')
+        self.login('administrador')
+        requirement = create('requirements', {'name': 'Origen prueba', 'document_type': 'origen',
+            'destination_country': 'Alemania', 'mandatory': True})
+        transition('en_revision')
+        self.assertEqual(self.post(f'documents/{doc["id"]}/approve/', {'notes': 'Archivo revisado'}).status_code, 200)
+        create('checklist', {'export': export_id, 'requirement': requirement['id'], 'passed': True})
+        create('compliance', {'export': export_id, 'result': 'conforme', 'notes': 'Expediente verificado'})
+        transition('aprobada_despacho')
+
+        self.login('administrador')
+        transport = create('transports', {'export': export_id, 'assigned_to': self.users['logistica'].pk,
+            'pickup_place': 'Finca prueba', 'delivery_place': 'Hamburgo',
+            'scheduled_pickup': timezone.now().isoformat()})
+        transition('preparacion_logistica')
+        self.login('logistica')
+        evidence = create('documents', {'export': export_id, 'title': 'Evidencia de prueba', 'document_type': 'evidencia'})
+        self.upload(evidence['id'])
+        for event in ('recogida', 'inicio', 'entrega'):
+            create('transport-events', {'transport': transport['id'], 'event_type': event,
+                'event_at': timezone.now().isoformat(), 'evidence': evidence['id']})
+        self.login('administrador')
+        for state in ('transporte_terrestre', 'embarcada', 'transito_internacional', 'arribada', 'entregada'):
+            transition(state)
+        self.login('importador')
+        self.assertEqual(self.post(f'orders/{order["id"]}/confirm/', {'notes': 'Recibido completo'}).status_code, 200)
+        self.assertEqual(len(self.client.get('/api/documents/').data['results']), 1)
+        self.login('administrador')
+        for kind, category, amount in [('ingreso', 'venta', 2500), ('costo', 'logistica', 300)]:
+            create('finance', {'export': export_id, 'kind': kind, 'category': category,
+                'description': 'Prueba ' + kind, 'amount': amount, 'paid_amount': amount,
+                'currency': 'EUR', 'base_currency': 'EUR'})
+        self.login('administrador')
+        transition('cerrada')
+        saved_lot = ProductLot.objects.get(pk=lot['id'])
+        self.assertEqual(saved_lot.quantity_available, Decimal('900'))
+
+    def test_administrator_enters_orders_and_external_roles_cannot(self):
+        data = {'export': self.export.pk, 'reference': 'PED-NUEVO', 'description': 'Café', 'quantity': 10}
+        for role in ('productor', 'importador', 'logistica', 'documental', 'financiero'):
+            self.login(role)
+            self.assertEqual(self.post('orders/', data).status_code, 403, role)
+        self.login('exportaciones')
+        self.assertEqual(self.post('orders/', data).status_code, 201)
+
+    def test_administration_owns_finance_documents_and_export_tasks(self):
+        m.FinanceEntry.objects.create(organization=self.org, export=self.export,
+            actor=self.users['financiero'], kind='costo', description='Flete pendiente', amount=10, currency='USD', base_currency='USD', base_amount=10)
+        m.Document.objects.create(organization=self.org, export=self.export,
+            owner=self.users['exportaciones'], title='Para revisar', document_type='origen', status='pendiente')
+        self.login('administrador')
+        tasks = self.client.get('/api/workspace/').data['pending_tasks']
+        self.assertTrue({'finance', 'exports', 'documents'}.issubset({t['module'] for t in tasks}))
+        self.login('financiero')
+        tasks = self.client.get('/api/workspace/').data['pending_tasks']
+        self.assertTrue(any(t['module'] == 'finance' for t in tasks))
+
+    def test_invitation_options_are_exactly_four_even_if_legacy_rows_exist(self):
+        self.login('administrador')
+        response = self.client.get('/api/role-options/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row['id']: row['name'] for row in response.data}, {
+            'administrador': 'Administrador', 'productor': 'Productor',
+            'logistica': 'Transportador', 'importador': 'Importador'})
+        for role in Role.LEGACY_ROLES:
+            self.assertEqual(self.post('invitations/', {'email': 'nuevo@test.local', 'role': role}).status_code, 400)
+        membership = Membership.objects.get(user=self.users['productor'], organization=self.org)
+        self.assertEqual(self.client.patch(f'/api/members/{membership.pk}/', {'role': 'financiero'}, format='json').status_code, 400)
+
+    def test_only_administrator_invites_and_manages_the_team(self):
+        for role in ('productor', 'logistica', 'importador'):
+            self.login(role)
+            self.assertEqual(self.post('invitations/', {'email': 'nuevo@test.local', 'role': 'productor'}).status_code, 403)
+            self.assertEqual(self.client.get('/api/role-options/').status_code, 403)
+        self.login('administrador')
+        self.assertEqual(self.post('invitations/', {'email': 'nuevo@test.local', 'role': 'logistica'}).status_code, 201)
+
+    def test_administrator_can_review_own_uploaded_document_with_audit(self):
+        self.login('administrador')
+        doc = self.create_doc()
+        self.upload(doc)
+        self.assertEqual(self.post(f'documents/{doc}/submit/', {}).status_code, 200)
+        data = self.client.get(f'/api/documents/{doc}/').data
+        self.assertTrue(data['can_approve'])
+        self.assertEqual(self.post(f'documents/{doc}/approve/', {'notes': 'Verificado por administrador'}).status_code, 200)
+        self.assertTrue(AuditEvent.objects.filter(actor=self.users['administrador'],
+            action='document.aprobado', resource_id=str(doc)).exists())
+        self.assertEqual(self.post('transport-events/', {}).status_code, 403)
+
+    def test_role_migration_preserves_accounts_invitations_and_export_responsibility(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        previous_user = self.users['exportaciones']
+        from users.models import Invitation
+        invitation = Invitation.objects.create(organization=self.org, email='pendiente@test.local',
+            role=Role.objects.get(name='documental'), expires_at=timezone.now() + timedelta(days=1))
+        migration = import_module('users.migrations.0007_four_business_roles')
+        migration.consolidate_roles(apps, SimpleNamespace(connection=connection))
+        previous_user.refresh_from_db()
+        invitation.refresh_from_db()
+        self.export.refresh_from_db()
+        self.assertEqual(previous_user.role.name, 'administrador')
+        self.assertEqual(self.export.responsible_id, previous_user.pk)
+        self.assertEqual(invitation.role.name, 'administrador')
+        self.assertFalse(Role.objects.filter(name__in=Role.LEGACY_ROLES, is_active=True).exists())
+        self.assertFalse(Membership.objects.filter(role__name__in=Role.LEGACY_ROLES).exists())
+        self.assertTrue(AuditEvent.objects.filter(action='membership.role_consolidated').exists())
+
+    def test_legacy_destination_names_keep_exports_and_requirements_aligned(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        self.export.destination_country = 'Espana'
+        self.export.save()
+        requirement = m.Requirement.objects.create(organization=self.org,
+            name='Origen España', document_type='origen', destination_country='Espana')
+        migration = import_module('catalog.migrations.0007_align_destination_names')
+        migration.align_destinations(apps, SimpleNamespace(connection=connection))
+        self.export.refresh_from_db()
+        requirement.refresh_from_db()
+        self.assertEqual(self.export.destination_country, 'España')
+        self.assertEqual(requirement.destination_country, 'España')

@@ -6,6 +6,7 @@ import 'presentation.dart';
 import 'record_form.dart';
 import 'operation_map.dart';
 import 'workflow.dart';
+import 'finance_report.dart';
 
 class ExportDetail extends StatefulWidget {
   const ExportDetail({
@@ -135,10 +136,17 @@ class _ExportDetailState extends State<ExportDetail> {
       builder: (_) => RecordForm(
         api: widget.api,
         module: module,
+        modules: widget.modules,
         record: row,
-        initialValues: hasExport ? {'export': _record['id']} : {},
+        initialValues: {
+          if (hasExport) 'export': _record['id'],
+          if (key == 'requirements')
+            'destination_country': _record['destination_country'],
+        },
         lockedFields: hasExport ? {'export'} : {},
-        intro: 'Este registro pertenece a la operación ${_record['code']}.',
+        intro: key == 'requirements'
+            ? 'Este requisito se aplicará a las exportaciones con destino a ${_record['destination_country']}. Después carga el documento y verifica el requisito en este expediente.'
+            : 'Este registro pertenece a la operación ${_record['code']}.',
       ),
     );
     if (saved == true) {
@@ -576,6 +584,7 @@ class _ExportDetailState extends State<ExportDetail> {
                       lifecycleStages[i],
                       style: const TextStyle(fontSize: 12),
                     ),
+                    subtitle: Text(lifecycleGuides[i]),
                     trailing: const Icon(Icons.chevron_right, size: 18),
                     onTap: () {
                       if (i == 0 &&
@@ -602,12 +611,12 @@ class _ExportDetailState extends State<ExportDetail> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       const Text(
-        'Todo el trabajo de esta exportación',
+        'Completa esta exportación',
         style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 6),
       const Text(
-        'Abre una sección para consultar o completar lo que te corresponde.',
+        'Pedido → documentos → transporte → cierre. Cada sección indica quién la completa.',
         style: TextStyle(color: AppTheme.muted),
       ),
       const SizedBox(height: 14),
@@ -624,14 +633,7 @@ class _ExportDetailState extends State<ExportDetail> {
           icon: const Icon(Icons.edit_outlined),
           label: const Text('Editar datos comerciales'),
         ),
-      if (_module('exports')?['permissions'] is List &&
-          (_module('exports')!['permissions'] as List).contains('assign') &&
-          !_terminal)
-        TextButton.icon(
-          onPressed: _assignCoordinator,
-          icon: const Icon(Icons.person_add_alt),
-          label: const Text('Asignar coordinador'),
-        ),
+      _stepHeading('1. Pedido y mercancía', ['export-allocations', 'orders']),
       if (_module('export-allocations') != null)
         _resourceSection('export-allocations', 'Productos y lotes reservados')
       else
@@ -639,28 +641,70 @@ class _ExportDetailState extends State<ExportDetail> {
           title: const Text('Productos y lotes'),
           children: [_lots()],
         ),
-      _resourceSection('documents', 'Documentos y versiones'),
+      _resourceSection('orders', 'Pedido del comprador y recepción'),
+      _stepHeading('2. Documentos y aprobación', [
+        'documents',
+        'requirements',
+        'checklist',
+        'compliance',
+      ]),
       _resourceSection('requirements', 'Requisitos del destino'),
+      _resourceSection('documents', 'Documentos y versiones'),
       _resourceSection('checklist', 'Verificación de requisitos'),
       _resourceSection('compliance', 'Resultado de cumplimiento'),
+      _stepHeading('3. Transporte y entrega', ['transports']),
       _resourceSection('transports', 'Transporte y responsables'),
+      _stepHeading('4. Pagos y cierre', ['finance']),
+      if (_module('finance')?['can_report'] == true)
+        FinanceReport(
+          api: widget.api,
+          revision: _revision,
+          exportId: _record['id'] as int,
+        ),
       _resourceSection('finance', 'Costos y pagos autorizados'),
-      _resourceSection('quotes', 'Cotizaciones'),
-      _resourceSection('activities', 'Tareas y solicitudes al equipo'),
-      _resourceSection('approvals', 'Solicitudes de aprobación'),
-      _resourceSection('incidents', 'Problemas e incidencias'),
-      _resourceSection('orders', 'Pedidos y recepciones'),
-      if (_canCreate('activities') && !_terminal)
-        Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: OutlinedButton.icon(
-            onPressed: () => _form('activities'),
-            icon: const Icon(Icons.person_add_alt),
-            label: const Text('Delegar una tarea o solicitud'),
+      if ([
+            'quotes',
+            'activities',
+            'approvals',
+            'incidents',
+          ].any((key) => _module(key) != null) ||
+          (_module('exports')?['permissions'] as List? ?? []).contains(
+            'assign',
+          ))
+        ExpansionTile(
+          title: const Text('Opciones adicionales'),
+          subtitle: const Text(
+            'Úsalas si necesitas cotizar, delegar o reportar un problema.',
           ),
+          children: [
+            if ((_module('exports')?['permissions'] as List? ?? []).contains(
+                  'assign',
+                ) &&
+                !_terminal)
+              TextButton.icon(
+                onPressed: _assignCoordinator,
+                icon: const Icon(Icons.person_add_alt),
+                label: const Text('Cambiar administrador'),
+              ),
+            _resourceSection('quotes', 'Cotizaciones'),
+            _resourceSection('activities', 'Tareas y solicitudes al equipo'),
+            _resourceSection('approvals', 'Solicitudes de aprobación'),
+            _resourceSection('incidents', 'Problemas e incidencias'),
+          ],
         ),
     ],
   );
+
+  Widget _stepHeading(String label, List<String> keys) =>
+      keys.any((key) => _module(key) != null)
+      ? Padding(
+          padding: const EdgeInsets.only(top: 20, bottom: 4),
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        )
+      : const SizedBox.shrink();
 
   Future<void> _assignCoordinator() async {
     try {
@@ -669,14 +713,10 @@ class _ExportDetailState extends State<ExportDetail> {
       final id = await showDialog<int>(
         context: context,
         builder: (context) => SimpleDialog(
-          title: const Text('Asignar coordinador'),
+          title: const Text('Asignar administrador'),
           children: [
             for (final person in team.where(
-              (p) => [
-                'administrador',
-                'exportaciones',
-                'comercial',
-              ].contains(p['role']),
+              (p) => ['administrador'].contains(p['role']),
             ))
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, person['id']),
@@ -699,7 +739,6 @@ class _ExportDetailState extends State<ExportDetail> {
     final rows = _resources[key] ?? [];
     final canCreate =
         !_terminal &&
-        key != 'requirements' &&
         _canCreate(key) &&
         (key != 'export-allocations' ||
             [
@@ -712,19 +751,20 @@ class _ExportDetailState extends State<ExportDetail> {
       child: ExpansionTile(
         key: PageStorageKey('export-${_record['id']}-$key-$_focusStage'),
         initiallyExpanded:
+            (_focusStage == 1 && key == 'orders') ||
             {
-              1: 'export-allocations',
-              2: 'documents',
-              3: 'transports',
-            }[_focusStage] ==
-            key,
+                  1: 'export-allocations',
+                  2: 'documents',
+                  3: 'transports',
+                }[_focusStage] ==
+                key,
         leading: Icon(moduleIcon(key), color: AppTheme.forest),
         title: Text(
           title,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          '${rows.length} registro(s)',
+          '${rows.length} registro(s) · ${resourceOwner(key)}',
           style: const TextStyle(fontSize: 11),
         ),
         childrenPadding: const EdgeInsets.all(14),
@@ -814,6 +854,7 @@ class _ExportDetailState extends State<ExportDetail> {
     final module = _module('transport-events');
     if (module == null || module['can_create'] != true) return;
     final saved = await openTransportEventForm(
+      modules: widget.modules,
       context: context,
       api: widget.api,
       module: module,

@@ -14,17 +14,20 @@ class Role(models.Model):
     GERENCIA = "gerencia"
     IMPORTADOR = "importador"
 
+    BUSINESS_ROLES = (ADMINISTRADOR, PRODUCTOR, LOGISTICA, IMPORTADOR)
+    LEGACY_ROLES = (EXPORTACIONES, DOCUMENTAL, COMERCIAL, FINANCIERO, GERENCIA)
+
     ROLE_CHOICES = [
         (SUPERADMIN, "Superadministrador"),
         (ADMINISTRADOR, "Administrador"),
-        (PRODUCTOR, "Productor o proveedor"),
+        (PRODUCTOR, "Productor"),
         (EXPORTACIONES, "Exportaciones"),
         (DOCUMENTAL, "Responsable documental"),
         (COMERCIAL, "Comercial"),
-        (LOGISTICA, "Logistica"),
+        (LOGISTICA, "Transportador"),
         (FINANCIERO, "Financiero"),
         (GERENCIA, "Gerencia"),
-        (IMPORTADOR, "Cliente o importador"),
+        (IMPORTADOR, "Importador"),
     ]
 
     name = models.CharField(max_length=40, choices=ROLE_CHOICES, unique=True)

@@ -23,11 +23,9 @@ class Command(BaseCommand):
     def _create_users(self):
         demos = [
             ("admin.demo@ritech.local", Role.ADMINISTRADOR, "Ana", "Torres"),
-            ("exportaciones.demo@ritech.local", Role.EXPORTACIONES, "Laura", "Rojas"),
-            ("comercial.demo@ritech.local", Role.COMERCIAL, "Carlos", "Gomez"),
             ("logistica.demo@ritech.local", Role.LOGISTICA, "Marta", "Lopez"),
-            ("financiero.demo@ritech.local", Role.FINANCIERO, "Diego", "Perez"),
-            ("gerencia.demo@ritech.local", Role.GERENCIA, "Valentina", "Mejia"),
+            ("productor.demo@ritech.local", Role.PRODUCTOR, "Laura", "Rojas"),
+            ("importador.demo@ritech.local", Role.IMPORTADOR, "Carlos", "Gomez"),
         ]
 
         for email, role_name, first_name, last_name in demos:

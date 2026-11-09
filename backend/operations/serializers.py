@@ -1,4 +1,7 @@
 from rest_framework import serializers
+from decimal import Decimal
+from uuid import uuid4
+from django.db import transaction
 
 from .models import (
     Certification, Crop, ExportLotAllocation, ExportOperation, ExportStatusHistory,
@@ -57,7 +60,79 @@ class ProducerSerializer(TenantSerializer):
         exclude = ("organization", "created_at", "updated_at")
 
 
+class FarmPlotInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120, default='Área principal')
+    area = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.001'))
+    crop_type = serializers.ChoiceField(choices=[('cafe', 'Café'), ('cacao', 'Cacao')])
+    geometry = serializers.JSONField()
+
+    def validate_geometry(self, value):
+        return PlotSerializer().validate_geometry(value)
+
+
 class FarmSerializer(TenantSerializer):
+    code = serializers.CharField(max_length=40, required=False)
+    area_unit = serializers.ChoiceField(choices=[('hectarea', 'Hectáreas (ha)'), ('km2', 'Kilómetros cuadrados (km²)')], default='hectarea')
+    new_plots = FarmPlotInputSerializer(many=True, write_only=True, required=False, max_length=100)
+    plots = serializers.SerializerMethodField()
+
+    def get_plots(self, instance):
+        data = list(instance.plots.order_by('code').values('id', 'name', 'code', 'area', 'crop_type', 'geometry'))
+        if self.context['view'].get_membership().role.name not in {'administrador', 'superadmin', 'productor', 'exportaciones', 'documental'}:
+            for plot in data:
+                plot['geometry'] = None
+        return data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self.context['view'].get_membership().role.name not in {'administrador', 'superadmin', 'productor', 'exportaciones', 'documental'}:
+            data['geometry'] = None
+        return data
+
+    def validate_geometry(self, value):
+        return PlotSerializer().validate_geometry(value) if value else {}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        area = attrs.get('area', getattr(self.instance, 'area', Decimal(0)))
+        if area <= 0:
+            raise serializers.ValidationError({'area': 'Indica un área mayor que cero.'})
+        unit = attrs.get('area_unit', getattr(self.instance, 'area_unit', 'hectarea'))
+        area_ha = area * (100 if unit == 'km2' else 1)
+        existing_area = sum(self.instance.plots.values_list('area', flat=True)) if self.instance else Decimal(0)
+        if existing_area + sum(p['area'] for p in attrs.get('new_plots', [])) > area_ha:
+            raise serializers.ValidationError({'new_plots': 'La suma de las parcelas no puede superar el área de la finca (1 km² = 100 ha).'})
+        if attrs.get('new_plots'):
+            from users.access import require
+            require(self.context['view'].get_membership().role.name, 'plots', 'create')
+        return attrs
+
+    def _add_plots(self, farm, plots):
+        from users.access import audit
+        area_ha = farm.area * (100 if farm.area_unit == 'km2' else 1)
+        if sum(farm.plots.values_list('area', flat=True)) + sum(p['area'] for p in plots) > area_ha:
+            raise serializers.ValidationError({'new_plots': 'Las parcelas superan el área de la finca.'})
+        for data in plots:
+            plot = Plot.objects.create(organization=farm.organization, farm=farm,
+                code='PAR-' + uuid4().hex[:12].upper(), **data)
+            audit(self.context['request'], farm.organization, 'plot.created', plot)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        plots = validated_data.pop('new_plots', [])
+        validated_data.setdefault('code', 'FIN-' + uuid4().hex[:12].upper())
+        farm = super().create(validated_data)
+        self._add_plots(farm, plots)
+        return farm
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        instance = Farm.objects.select_for_update().get(pk=instance.pk)
+        plots = validated_data.pop('new_plots', [])
+        farm = super().update(instance, validated_data)
+        self._add_plots(farm, plots)
+        return farm
+
     class Meta:
         model = Farm
         exclude = ("organization", "created_at", "updated_at")
@@ -71,6 +146,32 @@ class CropSerializer(TenantSerializer):
 
 class PlotSerializer(TenantSerializer):
     geometry = serializers.JSONField()
+    code = serializers.CharField(max_length=40, required=False)
+    farm_name = serializers.CharField(source='farm.name', read_only=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        farm = attrs.get('farm', getattr(self.instance, 'farm', None))
+        area = attrs.get('area', getattr(self.instance, 'area', Decimal(0)))
+        if farm is not None:
+            others = farm.plots.exclude(pk=getattr(self.instance, 'pk', None))
+            if area <= 0 or sum(others.values_list('area', flat=True)) + area > farm.area * (100 if farm.area_unit == 'km2' else 1):
+                raise serializers.ValidationError({'area': 'El área debe ser positiva y la suma de parcelas no puede superar el área de la finca, en hectáreas.'})
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        Farm.objects.select_for_update().get(pk=validated_data['farm'].pk)
+        self.validate(validated_data)
+        validated_data.setdefault('code', 'PAR-' + uuid4().hex[:12].upper())
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        farm = validated_data.get('farm', instance.farm)
+        Farm.objects.select_for_update().get(pk=farm.pk)
+        self.validate(validated_data)
+        return super().update(instance, validated_data)
 
     class Meta:
         model = Plot
@@ -119,6 +220,9 @@ def _closed_rings(geometry_type, coordinates):
 
 
 class HarvestSerializer(TenantSerializer):
+    farm_name = serializers.CharField(source='plot.farm.name', read_only=True)
+    plot_name = serializers.CharField(source='plot.name', read_only=True)
+
     class Meta:
         model = Harvest
         exclude = ("organization", "created_at", "updated_at")

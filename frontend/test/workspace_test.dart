@@ -127,7 +127,7 @@ void main() {
       await openWorkspace(tester, api);
       expect(find.text('Pedidos activos'), findsOneWidget);
       expect(find.text('Costos, ingresos y pagos'), findsNothing);
-      expect(find.text('Productores'), findsNothing);
+      expect(find.text('Perfil de productor'), findsNothing);
       await tester.tap(find.text('Pedidos').first);
       await tester.pumpAndSettle();
       expect(find.text('Pedido propio'), findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Producción e inventario'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Productores').first);
+    await tester.tap(find.text('Perfil de productor').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nuevo productor'));
     await tester.pumpAndSettle();
@@ -170,7 +170,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Producción e inventario'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Productores').first);
+    await tester.tap(find.text('Perfil de productor').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Editar'));
     await tester.pumpAndSettle();

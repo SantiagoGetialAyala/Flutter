@@ -304,14 +304,21 @@ void main() {
     expect(api.writes.single['path'], '/exports/');
     expect(api.writes.single['importer'], 1);
     expect(find.text('Etapa 1 de 5'), findsOneWidget);
+    expect(find.text('Plan de trabajo · 5 etapas'), findsOneWidget);
     await tester.tap(find.text('Plan de trabajo · 5 etapas'));
     await tester.pumpAndSettle();
     for (final stage in lifecycleStages) {
       expect(find.text(stage), findsOneWidget);
     }
+    for (final guide in lifecycleGuides) {
+      expect(find.text(guide), findsOneWidget);
+    }
     await tester.tap(find.text('Preparar productos y lotes'));
     await tester.pumpAndSettle();
     expect(find.text('Productos y lotes reservados'), findsOneWidget);
+    expect(find.text('1. Pedido y mercancía'), findsOneWidget);
+    expect(find.text('Opciones adicionales'), findsOneWidget);
+    expect(find.text('Tareas y solicitudes al equipo'), findsNothing);
     await tester.ensureVisible(find.text('Reservar lote'));
     await tester.tap(find.text('Reservar lote'));
     await tester.pumpAndSettle();

@@ -1,5 +1,8 @@
 # AgroPremium: navegación centrada en el trabajo
 
+> Roles actuales: Administrador, Productor, Transportador e Importador. Las referencias históricas a perfiles separados de oficina se consolidaron en Administrador. Consulta [Roles actuales](roles-y-flujos.md) y la [guía de prueba](prueba-exportacion-completa.md).
+
+
 ## Diagnóstico y decisiones
 
 La barra anterior enumeraba los recursos del backend y reunía documentación, transporte, finanzas y ventas bajo «Operación». Abrir una exportación mostraba solo resumen, historial, lotes y documentos, mientras sus costos, requisitos, transporte y tareas exigían volver a otras listas. Los formularios mostraban muchos campos opcionales y el inicio podía mostrar más de cinco indicadores sin enlaces.

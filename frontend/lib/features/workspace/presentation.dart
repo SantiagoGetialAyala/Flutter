@@ -92,6 +92,8 @@ String sectionFor(String key) =>
 
 String moduleLabel(String key, String fallback) =>
     const {
+      'producers': 'Perfil de productor',
+      'farms': 'Fincas y parcelas',
       'documents': 'Documentos',
       'requirements': 'Requisitos para exportar',
       'checklist': 'Verificar requisitos',
@@ -123,7 +125,8 @@ String moduleHelp(String key) =>
           'Registra problemas de la operación para darles seguimiento.',
       'producers':
           'Registra a las personas o empresas que producen tu mercancía.',
-      'farms': 'Registra las fincas de origen y vincúlalas con su productor.',
+      'farms':
+          'Registra tamaño, ubicación y parcelas de la finca en un solo formulario.',
       'crops': 'Identifica qué se cultiva en cada finca.',
       'plots': 'Divide las fincas en parcelas e indica su ubicación.',
       'harvests': 'Registra cuándo se cosechó y cuánto se obtuvo.',
@@ -263,12 +266,12 @@ String friendly(dynamic value) {
         'administrador': 'Administrador',
         'superadmin': 'Superadministrador',
         'productor': 'Productor',
-        'exportaciones': 'Exportaciones',
-        'documental': 'Documental',
-        'logistica': 'Logística',
-        'financiero': 'Financiero',
-        'comercial': 'Comercial',
-        'gerencia': 'Gerencia',
+        'exportaciones': 'Administrador',
+        'documental': 'Administrador',
+        'logistica': 'Transportador',
+        'financiero': 'Administrador',
+        'comercial': 'Administrador',
+        'gerencia': 'Administrador',
         'importador': 'Importador',
         'pagado': 'Pagado',
         'parcial': 'Pago parcial',

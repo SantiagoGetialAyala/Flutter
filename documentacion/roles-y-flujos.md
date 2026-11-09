@@ -1,60 +1,59 @@
-# Roles, permisos y flujos de negocio
+# Cuatro roles para exportar
 
-La interfaz principal obtiene su panel, módulos, formularios y acciones desde `GET /api/workspace/`. El rol efectivo procede de la membresía de la organización seleccionada, no del perfil global que se eligió al registrarse. Cambiar de empresa vuelve a cargar los permisos. Las autorizaciones se comprueban también en el servidor en cada petición.
+El **Administrador** es la persona encargada de la empresa. Solo él invita al equipo, asigna funciones y gestiona exportaciones, documentos y pagos. Ya no hace falta buscar un rol de coordinación, comercial, documental, financiero o gerencia.
 
-## Probar todos los perfiles
+| Rol en Invitar personas | Qué hace | Qué consulta |
+| --- | --- | --- |
+| Administrador | Invita y vincula cuentas; registra importadores, exportaciones y pedidos; reserva lotes; verifica documentos; aprueba despacho; asigna transporte; registra ingresos, costos y pagos; cierra. | Los registros de su empresa. |
+| Productor | Registra su perfil, fincas, parcelas, cosechas, lotes y soportes de origen. | Su origen y las entregas relacionadas. |
+| Transportador | Atiende sus cargas; registra vehículo, conductor, recogida, salida y entrega con evidencias. | Solo los envíos asignados a su cuenta. |
+| Importador | Consulta pedidos y archivos compartidos; confirma recepción y reporta problemas. | Solo sus compras y envíos. |
 
-Las migraciones y el laboratorio ya fueron aplicados en la base PostgreSQL local durante esta entrega. Las cuentas del laboratorio y sus contraseñas aleatorias están en `backend/.demo-credentials.txt`, un archivo local excluido del control de versiones. Hay una cuenta por cada identificador:
+El identificador interno del Transportador continúa siendo `logistica` para conservar las asignaciones existentes. La cuenta técnica de plataforma se mantiene fuera de las invitaciones empresariales.
 
-`superadmin`, `administrador`, `productor`, `exportaciones`, `documental`, `logistica`, `financiero`, `importador`, y los perfiles compatibles `comercial` y `gerencia`.
+## Invitar a una persona
 
-Los correos siguen el formato `productor@roles.ritech.test`. Cierra sesión e inicia con otro correo para probar su experiencia. Todas las cuentas empresariales pertenecen a **Laboratorio de roles RiTech**. Superadministración inicia en el panel de plataforma.
+1. Entra como **Administrador** y abre **Invitar personas → Invitar persona**.
+2. Escribe el correo y elige uno de los cuatro roles. La descripción debajo del selector explica su trabajo.
+3. Indica a la persona que entre en **Crear cuenta**, complete sus datos y contraseña usando ese correo. La empresa y el rol se asignan automáticamente a partir de la invitación vigente; no selecciona rol ni necesita código. Si hay varias invitaciones vigentes para el correo, se usa la más reciente.
+4. Si ya tenía cuenta, inicia sesión y usa **Aceptar invitación**.
+5. Vincula la cuenta importadora a su ficha en **Clientes e importadores**. El productor puede crear su propio perfil; si ya existía, administración vincula su cuenta.
 
-Para reproducir el laboratorio en una instalación nueva:
+Puedes invitar a otro Administrador si necesitas compartir la gestión. La invitación vence a los siete días y se acepta una sola vez. El código se conserva como alternativa para personas que ya tenían cuenta.
+
+## Recorrido de una exportación
+
+1. **Productor:** finca con sus parcelas → cosecha → lote disponible.
+2. **Administrador:** importador → exportación → reserva del lote → pedido.
+3. **Administrador:** requisitos → documentos con archivos → revisión → checklist → evaluación conforme → aprobación de despacho.
+4. **Administrador:** asigna un transporte a una cuenta Transportador.
+5. **Transportador:** registra recogida → inicio → entrega con archivos de evidencia.
+6. **Administrador:** actualiza los estados de la exportación hasta llegada y entrega.
+7. **Importador:** confirma recepción del pedido.
+8. **Administrador:** registra costos, ingresos y pagos; revisa pendientes y cierra.
+
+La [guía de prueba completa](prueba-exportacion-completa.md) contiene botones, cuentas de laboratorio, datos de ejemplo y PDF para cargar.
+
+## Controles que se conservan
+
+El servidor comprueba empresa, propiedad, asignación, permisos y transiciones en cada petición. Productores, transportadores e importadores no invitan ni cambian funciones. Crear cuenta exige que exista una invitación pendiente y vigente para ese correo. El servidor ignora el rol enviado por clientes anteriores y utiliza únicamente el asignado por el administrador. La ruta separada **Quiero registrar mi empresa** crea una empresa nueva y su primera cuenta administradora; no concede acceso a empresas existentes.
+
+El Administrador puede verificar los documentos que él mismo cargó. Se registra quién subió y quién aprobó, junto con fecha y observaciones. El despacho sigue exigiendo archivos aprobados, vigentes, requisitos verificados y evaluación conforme. Una versión nueva devuelve el documento a borrador e invalida su verificación.
+
+Los archivos son privados. El importador solo accede a documentos aprobados marcados como compartidos. El inventario no permite reservas superiores al disponible. Los eventos logísticos exigen orden, fechas y archivos de esa exportación. Los reportes separan monedas; el reporte del expediente solo incluye esa operación.
+
+## Cuentas existentes
+
+La migración `users.0007_four_business_roles` convierte los perfiles empresariales anteriores —Exportaciones, Comercial, Documental, Financiero y Gerencia— en Administrador. Conserva usuarios, contraseñas, membresías activas/inactivas, códigos de invitación, responsables, operaciones y archivos. Los cambios de membresía quedan auditados y los roles anteriores quedan inactivos como registros históricos.
+
+Para nuevas invitaciones y cambios de función, tanto el selector como el servidor aceptan únicamente los cuatro roles. Los identificadores históricos permanecen en código para compatibilidad de datos; no son opciones para el equipo.
+
+## Laboratorio
 
 ```bash
 cd backend
-python3 manage.py migrate
-python3 manage.py seed_role_demo
+python manage.py migrate
+python manage.py seed_role_demo
 ```
 
-El comando solo crea las cuentas que faltan; no cambia contraseñas existentes. Los datos del laboratorio tienen una organización propia. Los registros antiguos sin organización se conservan, pero ya no se exponen como catálogo compartido. Para usarlos hay que asignar explícitamente su organización mediante Django o una migración de datos revisada.
-
-## Funciones por rol
-
-| Rol | Panel y operaciones disponibles | Límite de acceso |
-| --- | --- | --- |
-| Superadministrador | Organizaciones, cuentas activas/suspendidas/desactivadas, roles, matriz de permisos, funcionalidades, catálogos comunes, estadísticas agregadas, incidentes técnicos, auditoría y comprobación de API/base de datos. | El acceso empresarial exige seleccionar empresa, justificar el acceso excepcional y queda auditado; es de consulta. |
-| Administrador empresarial | Información y parámetros de empresa, invitaciones, asignación/revocación de roles del equipo, clientes, proveedores, supervisión de exportaciones, documentos, transporte, aprobaciones e indicadores financieros. | Solo su organización; no puede asignar superadministración ni editar cuentas globales. |
-| Productor | Perfil propio, fincas, cultivos, parcelas y GeoJSON, cosechas, cantidades/unidades, lotes, características de café/cacao, inventario y transformaciones, certificados, archivos/fotografías de origen, trazabilidad, observaciones y entregas relacionadas. | Solo productores vinculados a su cuenta y recursos derivados. No accede a finanzas ni al expediente comercial. |
-| Coordinador de exportaciones | Clientes/importadores, proveedores, productos, creación de exportaciones, lotes y reservas, destinos, Incoterms, condiciones, fechas previstas/reales, asignación de responsables y transportadores, cronograma, historial, documentos, incidencias y solicitudes de aprobación. | Su organización; no aprueba expedientes regulatorios con el rol predeterminado. Comercial conserva estas funciones de coordinación. |
-| Responsable documental | Expedientes, carga/clasificación, versiones, emisión/vencimiento, revisión, correcciones, aprobación/rechazo, requisitos por destino, checklist, trazabilidad, evaluaciones e informes documentales. | No valida sus propios archivos ni accede a finanzas. Bloquea la aprobación cuando el expediente está incompleto. |
-| Logística/transportador | Transportes asignados, vehículos y conductores propios, guías, recogida, inicio de trayecto, seguimiento, incidencias, fotografías/documentos de evidencia y entrega con fecha real. | Solo cargas asignadas. No modifica exportaciones, contratos ni información financiera. |
-| Financiero | Costos, seguros y gastos por categoría; ingresos; presupuestos; cotizaciones de proveedores; monedas y tasas de cambio con fuente; cobros, pagos y saldos; rentabilidad y variaciones por operación. | No altera origen ni aprueba documentos regulatorios. Los reportes separan las monedas de reporte. |
-| Cliente/importador | Pedidos, productos/lotes adquiridos dentro de su exportación, fechas y estados de envío, documentos aprobados compartidos, descargas, recepción e incidencias, notificaciones e historial. | Solo exportaciones vinculadas a su ficha de cliente. No ve documentos internos, versiones sustituidas ni datos de otros compradores. |
-| Gerencia | Consulta empresarial, reportes y decisiones de aprobación empresarial. | Sin edición de origen, documentos, transporte o finanzas. |
-
-## Recorrido de una operación
-
-1. **Equipo:** el administrador crea una invitación con correo y rol. Comparte manualmente el código mostrado en el detalle. La persona se registra o inicia sesión con ese correo y usa **Aceptar invitación**. La invitación vence a los siete días y solo se acepta una vez. En **Equipo y roles** se cambia el rol o se desactiva la membresía. Las cuentas vinculadas de productores y clientes se seleccionan desde el directorio de su empresa.
-2. **Origen:** el administrador vincula una cuenta productora a un productor, o el productor crea su perfil propio. Este registra finca, cultivo, parcela, cosecha y lote. El inventario no permite saldos negativos. Las reservas se crean desde **Reservas de lotes**; las liberaciones se generan al cancelar la exportación, evitando liberaciones manuales repetidas.
-3. **Operación comercial:** el coordinador crea el cliente y vincula su cuenta importadora; crea exportación, reserva lotes, registra pedido y programa actividades. El detalle de la exportación ofrece historial y cambio de estado. Asigna un responsable empresarial activo y un transporte a una cuenta logística.
-4. **Documentos:** se crea la ficha, se carga el archivo con **Cargar nueva versión** y se envía a revisión. Los archivos admitidos incluyen PDF, imágenes y documentos de oficina hasta 10 MB. Se guardan privadamente con versión, hash SHA-256 y autor. Otro usuario documental aprueba, rechaza o pide correcciones. Cargar una versión nueva devuelve el documento a borrador e invalida su verificación anterior.
-5. **Cumplimiento:** configura requisitos obligatorios para todos los destinos o para un país concreto; verifica cada elemento del checklist y registra una evaluación conforme. Para pasar de `en_revision` a `aprobada_despacho`, cada requisito debe tener un documento aprobado con archivo y vigencia válida, una verificación positiva y una evaluación conforme. Sin requisitos configurados tampoco se aprueba. Los requisitos demo son ejemplos; el contenido normativo lo define la organización.
-6. **Transporte:** el transportador registra su vehículo/conductor y guía. En **Seguimiento y evidencias** registra `recogida → inicio → entrega`, adjuntando un documento con archivo de esa exportación. El servidor exige el orden y conserva fechas/evidencias. Los eventos de incidencia crean una incidencia operativa. El coordinador actualiza los estados logísticos de la exportación; el transportador no tiene permiso para editar el expediente comercial.
-7. **Finanzas:** registra presupuesto, costos e ingresos. Para convertir entre monedas, selecciona una tasa con moneda de origen, moneda de destino, fecha y fuente. Se conserva el importe convertido del movimiento. `Importe pagado` deriva estado pendiente/parcial/pagado y nunca puede superar el importe. **Reporte** muestra costos, ingresos, margen, porcentaje, variación presupuestaria y pagos pendientes por exportación y moneda.
-8. **Entrega:** una vez la exportación está arribada, entregada o cerrada, el cliente confirma la recepción del pedido una sola vez y puede reportar incidencias de su operación. Ve únicamente documentos aprobados que el exportador haya marcado como compartidos.
-
-## Permisos y funcionalidades
-
-`backend/users/access.py` centraliza las acciones `view`, `create`, `update`, `delete`, `submit`, `approve`, `reject`, `assign`, `upload`, `download`, `export` y `manage`. La plataforma puede consultar la matriz efectiva y registrar excepciones por rol/módulo/acción en **Matriz de permisos**. Una excepción con `Permitido` desactivado revoca la acción. Los límites de empresa, propiedad, asignación y transiciones siguen siendo obligatorios aunque se conceda una acción adicional.
-
-En **Configuración y funcionalidades**, una clave como `module.finance` con `Habilitado` desactivado oculta el módulo y bloquea sus peticiones empresariales. Las claves de parámetros generales almacenan su valor para consulta/gestión; no se interpretan como código.
-
-Los registros de trazabilidad no se eliminan físicamente por API. Se archivan/desactivan cuando el modelo lo permite. Auditoría registra cambios, revisiones, descargas, asignaciones, decisiones y accesos excepcionales. Los intentos de login fallidos generan eventos de seguridad.
-
-## Validación y límites de esta entrega
-
-La suite cubre aislamiento entre organizaciones, productores, clientes y transportadores; bloqueo de permisos; invitaciones; versiones privadas; revisión documental; cumplimiento; stock; estados; conversiones/pagos; recepción y aprobaciones. Flutter tiene pruebas de navegación, visibilidad por rol, creación y edición.
-
-Las invitaciones se entregan por código, sin envío automático de correo. Los reportes se consultan en pantalla y se descargan en JSON. El estado de servicios comprueba la API y la conexión a base de datos, sin afirmar disponibilidad de integraciones externas. No se incluyen integraciones bancarias, tasas automáticas, validación legal externa, antivirus ni firma electrónica. El selector de archivos se integró para web y plataformas Flutter compatibles; la verificación realizada cubre compilación web y pruebas de widgets, no una sesión manual de navegador ni dispositivos físicos.
+Las cuatro cuentas empresariales son `administrador@roles.ritech.test`, `productor@roles.ritech.test`, `logistica@roles.ritech.test` e `importador@roles.ritech.test`. Sus contraseñas están en `backend/.demo-credentials.txt`, excluido de versiones. El comando no restablece contraseñas existentes.

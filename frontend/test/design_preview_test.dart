@@ -417,6 +417,8 @@ void main() {
     );
     await tester.tap(find.byTooltip('Buscar en gestión'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Más herramientas'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Finanzas'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ListTile, 'Costos y pagos'));

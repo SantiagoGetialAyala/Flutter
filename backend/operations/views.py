@@ -277,7 +277,7 @@ class ExportViewSet(OrganizationScopedViewSet):
         user_id = serializers.IntegerField(min_value=1).run_validation(request.data.get('user'))
         member = Membership.objects.filter(organization=self.organization, user_id=user_id, is_active=True, role__name__in=['administrador', 'exportaciones', 'comercial']).first()
         if not member:
-            raise ValidationError({'user': 'Selecciona un coordinador activo de esta empresa.'})
+            raise ValidationError({'user': 'Selecciona un administrador activo de esta empresa.'})
         export.responsible = member.user
         export.save(update_fields=['responsible', 'updated_at'])
         from users.access import audit
@@ -302,16 +302,16 @@ class ExportViewSet(OrganizationScopedViewSet):
         logistics_states = {"transporte_terrestre", "embarcada", "transito_internacional", "arribada", "entregada"}
         document_states = {"en_revision", "requiere_correcciones", "aprobada_despacho", "rechazada"}
         if next_status in logistics_states and role not in {Role.ADMINISTRADOR, Role.EXPORTACIONES, Role.LOGISTICA}:
-            raise PermissionDenied("Solo logística o exportaciones pueden actualizar el seguimiento del envío.")
+            raise PermissionDenied("El administrador actualiza el estado de la exportación.")
         if next_status in document_states and role not in {Role.ADMINISTRADOR, Role.DOCUMENTAL}:
-            raise PermissionDenied("Solo cumplimiento documental puede aprobar o rechazar la revisión.")
+            raise PermissionDenied("Solo el administrador puede aprobar o rechazar la revisión.")
         if next_status == "bloqueada" and role not in {Role.ADMINISTRADOR, Role.DOCUMENTAL}:
-            raise PermissionDenied("Solo administración o cumplimiento pueden bloquear la operación.")
+            raise PermissionDenied("Solo el administrador puede bloquear la operación.")
         if next_status == "aprobada_despacho":
             from business.services import ensure_compliance
             ensure_compliance(export)
         if export.status == "bloqueada" and (role not in {Role.ADMINISTRADOR, Role.DOCUMENTAL} or not str(request.data.get("notes", "")).strip()):
-            raise PermissionDenied("Solo administración o cumplimiento pueden desbloquear, con una justificación.")
+            raise PermissionDenied("Solo el administrador puede desbloquear, con una justificación.")
         previous = export.status
         export.status = next_status
         export.save(update_fields=["status", "updated_at"])

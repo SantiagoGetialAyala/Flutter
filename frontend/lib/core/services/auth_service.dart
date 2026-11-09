@@ -28,7 +28,7 @@ class AuthService {
     required String email,
     required String password,
     required String passwordConfirm,
-    required String role,
+    String? invitationCode,
   }) async {
     final body = await apiClient.post('/auth/register/', {
       'first_name': firstName.trim(),
@@ -36,7 +36,31 @@ class AuthService {
       'email': email.trim(),
       'password': password,
       'password_confirm': passwordConfirm,
-      'role': role,
+      if (invitationCode != null && invitationCode.trim().isNotEmpty)
+        'invitation_code': invitationCode.trim(),
+    });
+    final session = AuthSession.fromJson(body);
+    await apiClient.saveTokens(session.accessToken, session.refreshToken);
+    return session;
+  }
+
+  Future<AuthSession> registerCompany({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String passwordConfirm,
+    required String companyName,
+    required String taxId,
+  }) async {
+    final body = await apiClient.post('/auth/register-company/', {
+      'first_name': firstName.trim(),
+      'last_name': lastName.trim(),
+      'email': email.trim(),
+      'password': password,
+      'password_confirm': passwordConfirm,
+      'company_name': companyName.trim(),
+      'tax_id': taxId.trim(),
     });
     final session = AuthSession.fromJson(body);
     await apiClient.saveTokens(session.accessToken, session.refreshToken);

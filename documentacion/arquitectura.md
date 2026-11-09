@@ -1,5 +1,8 @@
 # Arquitectura
 
+> Roles actuales: Administrador, Productor, Transportador e Importador. Las referencias históricas a perfiles separados de oficina se consolidaron en Administrador. Consulta [Roles actuales](roles-y-flujos.md) y la [guía de prueba](prueba-exportacion-completa.md).
+
+
 - **Presentación:** Flutter. `features/workspace` construye navegación, paneles y formularios a partir de la membresía y permisos enviados por la API. No decide autorizaciones del servidor.
 - **Identidad:** Django y JWT. `users` contiene cuentas globales, organizaciones, membresías, invitaciones, roles, excepciones de permisos y auditoría.
 - **Autorización:** `users/access.py` centraliza módulo y acción. `business/scoping.py` añade límites por organización, productor, cliente y transportador. Las relaciones se validan al crear y editar.

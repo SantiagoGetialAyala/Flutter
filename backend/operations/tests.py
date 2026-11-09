@@ -129,3 +129,64 @@ class OperationsApiTests(TestCase):
         self.client.force_authenticate(importer)
         response = self.client.get("/api/producers/")
         self.assertEqual(response.status_code, 403)
+
+    def test_farm_and_parcels_save_together_with_km2_conversion(self):
+        from .models import Farm, Plot
+        producer = self.client.post('/api/producers/', {'name': 'Productor'}, format='json').data
+        point = {'type': 'Point', 'coordinates': [-74.08, 4.60]}
+        response = self.client.post('/api/farms/', {
+            'producer': producer['id'], 'name': 'Finca unificada', 'area': '0.500', 'area_unit': 'km2',
+            'department': 'Bogotá, D.C.', 'municipality': 'Bogotá, D.C.', 'geometry': point,
+            'new_plots': [{'name': 'Área principal', 'area': '50.000', 'crop_type': 'cafe', 'geometry': point}],
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        farm = Farm.objects.get(pk=response.data['id'])
+        self.assertTrue(farm.code.startswith('FIN-'))
+        self.assertEqual(farm.geometry, point)
+        plot = Plot.objects.get(farm=farm)
+        self.assertEqual(plot.area, 50)
+        self.assertEqual(plot.organization_id, self.organization.pk)
+        self.assertEqual(response.data['plots'][0]['id'], plot.pk)
+        harvest = self.client.post('/api/harvests/', {'plot': plot.pk, 'harvest_date': '2026-11-06',
+            'product_type': 'cafe', 'quantity': '100', 'unit': 'kg'}, format='json')
+        self.assertEqual(harvest.status_code, 201, harvest.data)
+
+    def test_invalid_nested_parcels_do_not_leave_half_created_farms(self):
+        from .models import Farm, Plot
+        producer = self.client.post('/api/producers/', {'name': 'Productor'}, format='json').data
+        point = {'type': 'Point', 'coordinates': [-75.5, 6.2]}
+        data = {'producer': producer['id'], 'name': 'No guardar', 'area': '2',
+            'new_plots': [{'name': 'Uno', 'area': '1', 'crop_type': 'cafe', 'geometry': point},
+                          {'name': 'Dos', 'area': '2', 'crop_type': 'cafe', 'geometry': point}]}
+        response = self.client.post('/api/farms/', data, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(Farm.objects.filter(name='No guardar').exists())
+        self.assertFalse(Plot.objects.exists())
+        data['new_plots'][1]['area'] = '1'
+        data['new_plots'][1]['geometry'] = {'type': 'Point', 'coordinates': [-200, 4]}
+        response = self.client.post('/api/farms/', data, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(Farm.objects.filter(name='No guardar').exists())
+
+    def test_producer_cannot_create_a_farm_for_another_producer(self):
+        from .models import Producer
+        role = Role.objects.get(name='productor')
+        user = User.objects.create_user(email='farmer@test.local', password='Test-Password-123!', role=role)
+        Membership.objects.create(user=user, organization=self.organization, role=role)
+        other = Producer.objects.create(organization=self.organization, name='Ajeno')
+        self.client.force_authenticate(user)
+        response = self.client.post('/api/farms/', {'producer': other.pk, 'name': 'Ajena', 'area': 2}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_existing_farm_can_add_parcels_and_reject_oversized_edits(self):
+        producer = self.client.post('/api/producers/', {'name': 'Productor'}, format='json').data
+        farm = self.client.post('/api/farms/', {'producer': producer['id'], 'name': 'Origen', 'area': 10}, format='json').data
+        response = self.client.patch(f"/api/farms/{farm['id']}/", {'new_plots': [
+            {'name': 'Zona norte', 'area': 6, 'crop_type': 'cacao', 'geometry': {'type': 'Point', 'coordinates': [-74, 4]}}
+        ]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        plot = response.data['plots'][0]
+        response = self.client.patch(f"/api/farms/{farm['id']}/", {'area': 5}, format='json')
+        self.assertEqual(response.status_code, 400)
+        response = self.client.patch(f"/api/plots/{plot['id']}/", {'area': 11}, format='json')
+        self.assertEqual(response.status_code, 400)

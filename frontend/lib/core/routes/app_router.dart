@@ -10,6 +10,7 @@ class AppRoutes {
   static const splash = '/';
   static const login = '/login';
   static const register = '/register';
+  static const registerCompany = '/register-company';
   static const dashboard = '/dashboard';
 }
 
@@ -23,6 +24,12 @@ class AppRouter {
       case AppRoutes.login:
         return MaterialPageRoute(
           builder: (_) => LoginScreen(authService: authService),
+          settings: settings,
+        );
+      case AppRoutes.registerCompany:
+        return MaterialPageRoute(
+          builder: (_) =>
+              RegisterScreen(authService: authService, createCompany: true),
           settings: settings,
         );
       case AppRoutes.register:

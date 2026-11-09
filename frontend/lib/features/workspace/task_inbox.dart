@@ -40,7 +40,7 @@ class _TaskInboxState extends State<TaskInbox> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Solo aparecen registros de tu contexto y acciones permitidas para tu rol.',
+            'Abre un pendiente para continuar con el trabajo que te corresponde.',
             style: TextStyle(color: AppTheme.muted),
           ),
           const SizedBox(height: 16),

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from catalog.permissions import IsAdminRole
 
 from .models import AuditEvent, Membership, Organization, Role, User
-from .serializers import LoginSerializer, RegisterSerializer, UserAdminSerializer, UserSerializer
+from .serializers import CompanyRegisterSerializer, LoginSerializer, RegisterSerializer, UserAdminSerializer, UserSerializer
 
 
 class LoginView(TokenObtainPairView):
@@ -18,12 +18,17 @@ class LoginView(TokenObtainPairView):
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = RegisterSerializer
 
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(serializer.to_representation(user), status=status.HTTP_201_CREATED)
+
+
+class CompanyRegisterView(RegisterView):
+    serializer_class = CompanyRegisterSerializer
 
 
 class CurrentUserView(APIView):
@@ -66,7 +71,7 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         from .access import is_platform
         if not is_platform(self.request.user) and (not self.request.user.role or self.request.user.role.name not in allowed_owner_roles):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Solo un administrador, comercial o superadministrador puede registrar una organización exportadora.")
+            raise PermissionDenied("Selecciona Administrador al crear tu cuenta para registrar una empresa exportadora.")
         with transaction.atomic():
             organization = serializer.save()
             role, _ = Role.objects.get_or_create(

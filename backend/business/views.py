@@ -105,7 +105,7 @@ class DocumentViewSet(BusinessViewSet):
         doc = m.Document.objects.select_for_update().get(pk=self.get_object().pk, pk__in=self.get_queryset().values('pk'))
         if doc.status != 'pendiente':
             raise ValidationError('Solo se revisan documentos pendientes.')
-        if doc.owner_id == request.user.pk or (doc.versions.first() and doc.versions.first().uploaded_by_id == request.user.pk):
+        if self.get_membership().role.name != 'administrador' and (doc.owner_id == request.user.pk or (doc.versions.first() and doc.versions.first().uploaded_by_id == request.user.pk)):
             raise PermissionDenied('Otra persona debe validar el documento que cargaste.')
         notes = str(request.data.get('notes', '')).strip()
         if not approved and not notes:

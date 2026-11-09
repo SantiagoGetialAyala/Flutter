@@ -4,9 +4,28 @@ const lifecycleStages = [
   'Datos comerciales y destino',
   'Productos y lotes',
   'Preparación documental',
-  'Coordinación logística',
+  'Transporte y entrega',
   'Seguimiento y cierre',
 ];
+
+const lifecycleGuides = [
+  'Administrador · registra el importador, destino, condiciones y fechas; guarda el borrador.',
+  'Administrador · reserva los lotes del productor y registra el pedido del comprador.',
+  'Administrador · configura requisitos, revisa archivos, verifica el checklist y aprueba el despacho.',
+  'El administrador asigna el transporte. El transportador registra recogida, salida y entrega con evidencias.',
+  'El administrador actualiza la llegada y entrega. El importador confirma recepción; el administrador registra pagos y cierra.',
+];
+
+String resourceOwner(String key) => switch (key) {
+  'export-allocations' => 'Administrador reserva; productor registra el lote',
+  'orders' => 'Administrador registra; importador confirma recepción',
+  'requirements' || 'checklist' || 'compliance' => 'Administrador',
+  'documents' => 'Administrador carga y verifica',
+  'transports' => 'El administrador asigna; transportador entrega',
+  'finance' || 'quotes' => 'Administrador',
+  'approvals' => 'Administrador',
+  _ => 'Equipo asignado',
+};
 
 int lifecycleStage(String status) => switch (status) {
   'borrador' => 0,
@@ -25,7 +44,7 @@ String nextStep(String status) => switch (status) {
   'pendiente_documentacion' =>
     'Reúne los soportes y solicita la revisión documental.',
   'en_revision' =>
-    'El equipo documental debe verificar requisitos y registrar su decisión.',
+    'El administrador verifica los requisitos y aprueba el despacho.',
   'requiere_correcciones' =>
     'Consulta las observaciones y corrige los documentos indicados.',
   'aprobada_despacho' =>
@@ -40,8 +59,7 @@ String nextStep(String status) => switch (status) {
     'Operación completada. Puedes consultar el expediente y su historial.',
   'cancelada' || 'rechazada' =>
     'Consulta el historial para conocer el motivo y las decisiones registradas.',
-  'bloqueada' =>
-    'Revisa el motivo del bloqueo con administración o cumplimiento documental.',
+  'bloqueada' => 'Revisa el motivo del bloqueo con el administrador.',
   _ => 'Consulta el expediente para continuar con tu equipo.',
 };
 
@@ -56,13 +74,64 @@ String workLabel(String role) => switch (role) {
 };
 
 List<String> workModules(String role) => switch (role) {
-  'productor' => ['lots', 'farms', 'harvests', 'transports'],
+  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents'],
+  'administrador' => ['exports', 'invitations', 'documents', 'finance'],
   'importador' => ['orders', 'exports', 'transports', 'documents'],
   'logistica' => ['transports', 'transport-events', 'documents'],
-  'documental' => ['documents', 'exports', 'checklist', 'compliance'],
-  'financiero' => ['finance', 'quotes', 'exports'],
+  'documental' => ['exports', 'documents', 'requirements'],
+  'financiero' => ['finance', 'exports'],
+  'exportaciones' ||
+  'comercial' => ['exports', 'clients', 'documents', 'transports'],
   'superadmin' => ['platform-organizations', 'platform-users', 'audit'],
   _ => ['exports', 'activities', 'orders'],
+};
+
+List<String> essentialModules(String role) => switch (role) {
+  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents'],
+  'importador' => ['orders', 'exports', 'transports', 'documents', 'incidents'],
+  'logistica' => [
+    'transports',
+    'transport-events',
+    'vehicles',
+    'drivers',
+    'documents',
+    'incidents',
+  ],
+  'documental' => ['exports', 'documents', 'requirements'],
+  'financiero' => ['finance', 'exports'],
+  'administrador' => [
+    'exports',
+    'invitations',
+    'members',
+    'producers',
+    'clients',
+    'documents',
+    'requirements',
+    'transports',
+    'finance',
+  ],
+  'exportaciones' ||
+  'comercial' => ['exports', 'clients', 'transports', 'documents'],
+  _ => workModules(role),
+};
+
+String roleInstructions(String role) => switch (role) {
+  'productor' =>
+    'Registra tu perfil y luego tu finca: allí eliges su ubicación y organizas las parcelas. Después registra cosechas y lotes. El administrador reserva tus lotes y registra el pedido.',
+  'importador' =>
+    'Consulta tus pedidos, envío y documentos compartidos. Cuando llegue la mercancía, confirma la recepción. El administrador registra tu pedido.',
+  'logistica' =>
+    'Abre tu transporte asignado y registra recogida, salida y entrega con sus evidencias.',
+  'documental' =>
+    'Configura requisitos del destino, revisa documentos y completa la verificación antes de aprobar el despacho.',
+  'financiero' =>
+    'Registra costos, ingresos y pagos de la exportación. Consulta el saldo y la rentabilidad.',
+  'administrador' =>
+    'Invita al productor, transportador e importador. Crea la exportación y el pedido, verifica documentos, asigna el transporte, registra pagos y cierra la operación.',
+  'gerencia' =>
+    'Consulta el avance de las exportaciones y los resultados. Atiende las aprobaciones empresariales que requieran tu decisión.',
+  _ =>
+    'Registra el importador, crea la exportación, reserva lotes y registra el pedido. Coordina documentos y transporte desde el expediente.',
 };
 
 const primaryIcons = [

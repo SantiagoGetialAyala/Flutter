@@ -5,23 +5,30 @@ import '../../../core/theme/app_theme.dart';
 import 'presentation.dart';
 
 class FinanceReport extends StatefulWidget {
-  const FinanceReport({super.key, required this.api, required this.revision});
+  const FinanceReport({
+    super.key,
+    required this.api,
+    required this.revision,
+    this.exportId,
+  });
   final ApiClient api;
   final int revision;
+  final int? exportId;
   @override
   State<FinanceReport> createState() => _FinanceReportState();
 }
 
 class _FinanceReportState extends State<FinanceReport> {
-  late Future<Map<String, dynamic>> _report = widget.api.getMap(
-    '/finance/report/',
-  );
+  String get _path =>
+      '/finance/report/${widget.exportId == null ? '' : '?export=${widget.exportId}'}';
+  late Future<Map<String, dynamic>> _report = widget.api.getMap(_path);
   String? _currency;
   @override
   void didUpdateWidget(FinanceReport oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.revision != widget.revision) {
-      _report = widget.api.getMap('/finance/report/');
+    if (oldWidget.revision != widget.revision ||
+        oldWidget.exportId != widget.exportId) {
+      _report = widget.api.getMap(_path);
     }
   }
 

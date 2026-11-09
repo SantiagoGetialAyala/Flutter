@@ -136,6 +136,15 @@ class _OperationMapState extends State<OperationMap> {
         for (final farm in farms) '${farm['id']}': farm['name'],
       };
       final features = <Map<String, dynamic>>[
+        for (final farm in farms)
+          if (geoCoordinates(farm['geometry']).isNotEmpty)
+            {
+              'title': farm['name'],
+              'subtitle':
+                  'Finca · ${farm['municipality'] ?? ''}, ${farm['department'] ?? ''}',
+              'geometry': farm['geometry'],
+              'kind': 'Punto de referencia de la finca',
+            },
         for (final p in plots)
           {
             'title':
@@ -143,7 +152,9 @@ class _OperationMapState extends State<OperationMap> {
             'subtitle':
                 'Parcela · ${p['farm__name'] ?? farmNames['${p['farm_id'] ?? p['farm']}'] ?? 'Finca vinculada'}',
             'geometry': p['geometry'],
-            'kind': 'Ubicación registrada',
+            'kind': p['geometry']?['type'] == 'Point'
+                ? 'Referencia de parcela (punto)'
+                : 'Límites de parcela',
           },
         for (final e in events)
           if (geoCoordinates(eventGeometry(e['location'])).isNotEmpty)
@@ -185,7 +196,7 @@ class _OperationMapState extends State<OperationMap> {
       ),
       const SizedBox(height: 5),
       const Text(
-        'Geometrías y eventos guardados por tu equipo. Las fechas y rutas previstas se muestran como planificación.',
+        'Ubicaciones registradas de fincas, parcelas y eventos. Un punto es una referencia del terreno; los límites solo aparecen cuando se ha registrado un polígono.',
         style: TextStyle(color: AppTheme.muted),
       ),
       if (widget.exportId == null && _exports.isNotEmpty) ...[
@@ -313,7 +324,10 @@ class _OperationMapState extends State<OperationMap> {
                   ),
                 ),
                 title: Text('${_features[i]['title']}'),
-                subtitle: Text('${_features[i]['kind']}'),
+                subtitle: Text(
+                  '${_features[i]['subtitle']} · ${_features[i]['kind']}\n${_coordinateSummary(_features[i])}',
+                ),
+                isThreeLine: true,
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => setState(() => _selected = i),
               ),
@@ -383,7 +397,6 @@ class _OperationMapState extends State<OperationMap> {
 
   Widget _details(Map<String, dynamic> feature) {
     final points = geoCoordinates(feature['geometry']);
-    final point = points.first;
     return Card(
       color: AppTheme.ivory,
       child: Padding(
@@ -396,14 +409,24 @@ class _OperationMapState extends State<OperationMap> {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             Text('${feature['subtitle']}'),
-            Text(
-              'Longitud: ${point.dx.toStringAsFixed(6)} · Latitud: ${point.dy.toStringAsFixed(6)}',
+            const Text('Sistema WGS84 · grados decimales'),
+            SelectableText(
+              [
+                for (var i = 0; i < points.length; i++)
+                  '${points.length > 1 ? 'Vértice ${i + 1} · ' : ''}Longitud: ${points[i].dx.toStringAsFixed(6)} · Latitud: ${points[i].dy.toStringAsFixed(6)}',
+              ].join('\n'),
             ),
             Text('${feature['kind']} · ${points.length} vértice(s)'),
           ],
         ),
       ),
     );
+  }
+
+  String _coordinateSummary(Map<String, dynamic> feature) {
+    final points = geoCoordinates(feature['geometry']);
+    final point = points.first;
+    return '${points.length > 1 ? 'Primer vértice de ${points.length} · ' : ''}Lat: ${point.dy.toStringAsFixed(6)} · Lon: ${point.dx.toStringAsFixed(6)}';
   }
 }
 

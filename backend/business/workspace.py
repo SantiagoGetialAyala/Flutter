@@ -66,8 +66,19 @@ def descriptor(module, cls, allowed, role):
             data['type'] = 'number'
         else:
             data['type'] = 'password' if name == 'password' else 'text'
+        if module == 'exports' and name == 'destination_country':
+            from catalog.models import Country
+            data.update(type='choice', choices=[
+                {'value': country.name, 'label': country.name}
+                for country in Country.objects.filter(is_active=True)])
+        if module == 'finance' and name == 'base_currency':
+            data['label'] = 'Moneda de reporte'
         if name == 'account_status':
             data['label'] = 'Estado de la cuenta'
+        if module == 'transports' and name == 'assigned_to':
+            data['label'] = 'Transportador responsable'
+        if module == 'plots' and name == 'area':
+            data['label'] = 'Área de la parcela (hectáreas)'
         if field.default is not serializers.empty and not callable(field.default):
             data['default'] = field.default
         else:
@@ -196,8 +207,17 @@ class RoleOptionsView(APIView):
         if not is_platform(request.user):
             member = membership_for(request)
             require(member.role.name, 'members', 'view')
-            roles = roles.exclude(name='superadmin')
-        return Response([{'id': row.name, 'name': row.get_name_display()} for row in roles])
+            roles = roles.filter(name__in=Role.BUSINESS_ROLES)
+        else:
+            roles = roles.filter(name__in=(*Role.BUSINESS_ROLES, Role.SUPERADMIN))
+        descriptions = {
+            'administrador': 'Invita al equipo y gestiona exportaciones, documentos y pagos.',
+            'productor': 'Registra sus fincas, cosechas y lotes.',
+            'logistica': 'Registra recogida, salida y entrega de sus envíos asignados.',
+            'importador': 'Consulta sus pedidos y confirma la recepción.',
+        }
+        return Response([{'id': row.name, 'name': row.get_name_display(),
+            'description': descriptions.get(row.name, row.description)} for row in roles])
 
 
 class ServiceStatusView(APIView):

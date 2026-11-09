@@ -1,6 +1,5 @@
 from datetime import timedelta
 from django.db import transaction
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -16,7 +15,7 @@ from .serializers import UserAdminSerializer
 class MemberSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     name = serializers.CharField(source='user.get_full_name', read_only=True)
-    role = serializers.SlugRelatedField(slug_field='name', queryset=Role.objects.filter(is_active=True).exclude(name=Role.SUPERADMIN))
+    role = serializers.SlugRelatedField(slug_field='name', queryset=Role.objects.filter(is_active=True, name__in=Role.BUSINESS_ROLES))
     class Meta:
         model = Membership
         fields = ('id', 'user', 'email', 'name', 'role', 'is_active')
@@ -45,7 +44,7 @@ class MemberViewSet(OrganizationScopedViewSet):
 
 
 class InvitationSerializer(serializers.ModelSerializer):
-    role = serializers.SlugRelatedField(slug_field='name', queryset=Role.objects.filter(is_active=True).exclude(name=Role.SUPERADMIN))
+    role = serializers.SlugRelatedField(slug_field='name', queryset=Role.objects.filter(is_active=True, name__in=Role.BUSINESS_ROLES))
     class Meta:
         model = Invitation
         fields = ('id', 'email', 'role', 'token', 'expires_at', 'accepted_at', 'created_at')
@@ -65,16 +64,9 @@ class InvitationViewSet(OrganizationScopedViewSet):
 
 
 class AcceptInvitationView(APIView):
-    @transaction.atomic
     def post(self, request):
-        try:
-            invitation = Invitation.objects.select_for_update().get(token=request.data.get('token'), email__iexact=request.user.email, accepted_at__isnull=True, expires_at__gt=timezone.now(), organization__is_active=True, role__is_active=True)
-        except (Invitation.DoesNotExist, ValueError, ValidationError, DjangoValidationError):
-            raise ValidationError('Invitación inválida, vencida o destinada a otro correo.')
-        Membership.objects.update_or_create(organization=invitation.organization, user=request.user, defaults={'role': invitation.role, 'is_active': True})
-        invitation.accepted_at = timezone.now()
-        invitation.save()
-        audit(request, invitation.organization, 'invitation.accepted', invitation)
+        from .invitations import accept_invitation
+        accept_invitation(request.user, request.data.get('token'))
         return Response({'detail': 'Ya puedes acceder a la organización.'})
 
 
@@ -167,7 +159,7 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class RoleViewSet(PlatformViewSet):
     module = 'roles'
-    queryset = Role.objects.all()
+    queryset = Role.objects.filter(name__in=(*Role.BUSINESS_ROLES, Role.SUPERADMIN))
     serializer_class = RoleSerializer
 
     def perform_update(self, serializer):
@@ -203,7 +195,7 @@ class GrantViewSet(PlatformViewSet):
     @action(detail=False, methods=['get'])
     def matrix(self, request):
         from .access import permissions
-        return Response({name: permissions(name) for name, _ in Role.ROLE_CHOICES})
+        return Response({name: permissions(name) for name in (*Role.BUSINESS_ROLES, Role.SUPERADMIN)})
 
 
 class AuditSerializer(serializers.ModelSerializer):

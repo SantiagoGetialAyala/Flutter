@@ -2,6 +2,12 @@
 
 Aplicación Flutter con API Django REST, JWT y PostgreSQL para origen de café/cacao, exportaciones, cumplimiento documental, logística, finanzas y acceso por roles.
 
+El [modelo de negocio y recorrido mínimo para exportar](documentacion/modelo-de-negocio.md) explica quién contrata, qué hace cada función y cómo crear cuentas de productores.
+
+Para probar el programa completo, sigue la [guía de exportación de principio a fin](documentacion/prueba-exportacion-completa.md): incluye cuentas, datos de ejemplo, archivos para cargar, cambios de estado y resultados esperados.
+
+El [registro unificado de fincas y parcelas y la asignación de entregas](documentacion/fincas-y-entregas.md) explica el mapa OpenStreetMap, las unidades de superficie y el trabajo de logística.
+
 El rediseño visual y el alta de empresas están explicados en [Diseño y organizaciones](documentacion/diseno-y-organizaciones.md).
 
 El rediseño centrado en operaciones, tareas y seguimiento está descrito en [Experiencia AgroPremium](documentacion/redisenio-agropremium.md).
@@ -27,7 +33,7 @@ En una instalación nueva, genera la empresa y las cuentas de prueba con:
 python manage.py seed_role_demo
 ```
 
-El comando guarda las credenciales aleatorias en `backend/.demo-credentials.txt`, excluido de versiones. No restablece contraseñas existentes. Incluye diez perfiles: los ocho del requerimiento y los perfiles compatibles comercial y gerencia.
+El comando guarda las credenciales aleatorias en `backend/.demo-credentials.txt`, excluido de versiones. No restablece contraseñas existentes. Incluye cuatro roles de empresa: Administrador, Productor, Transportador e Importador. La cuenta técnica de plataforma se mantiene fuera de las invitaciones empresariales.
 
 ## Iniciar Flutter
 

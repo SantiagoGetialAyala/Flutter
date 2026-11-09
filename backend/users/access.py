@@ -117,4 +117,9 @@ grant('administrador', 'organizations', EDIT)
 MATRIX['gerencia'].pop('invitations', None)
 MATRIX['gerencia'].pop('members', None)
 
+# Four business roles: administration owns the commercial, document and finance work.
+MATRIX['administrador']['orders'] = EDIT | {'submit'}
+for module in ('transport-events', 'vehicles', 'drivers'):
+    MATRIX['administrador'][module] = set(READ)
+
 grant('superadmin', 'countries', ACTIONS)

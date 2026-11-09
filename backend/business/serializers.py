@@ -21,7 +21,7 @@ class BusinessSerializer(TenantSerializer):
                 if not memberships.exists():
                     raise serializers.ValidationError({field: 'El usuario debe ser miembro activo de la organización.'})
                 if field in ('assigned_to', 'operator') and isinstance(self.Meta.model(), (m.Transport, m.Vehicle, m.Driver)) and not memberships.filter(role__name='logistica').exists():
-                    raise serializers.ValidationError({field: 'Selecciona una cuenta de logística de esta organización.'})
+                    raise serializers.ValidationError({field: 'Selecciona una cuenta Transportador de esta empresa.'})
             elif hasattr(value, 'organization_id'):
                 if not scope(type(value).objects.all(), membership, user).filter(pk=value.pk).exists():
                     raise serializers.ValidationError({field: 'Recurso fuera de tu ámbito autorizado.'})
@@ -46,7 +46,7 @@ class BusinessSerializer(TenantSerializer):
         if isinstance(self.Meta.model(), m.Transport):
             if membership.role.name == 'logistica':
                 if obj is None or any(key in attrs for key in ('assigned_to', 'export', 'pickup_place', 'delivery_place', 'scheduled_pickup', 'scheduled_delivery')):
-                    raise serializers.ValidationError('El coordinador asigna las cargas y rutas. Logística registra vehículo, guía y eventos.')
+                    raise serializers.ValidationError('El administrador asigna las cargas y rutas. El transportador registra vehículo, guía y eventos.')
             assigned = get('assigned_to')
             for field in ('vehicle', 'driver'):
                 item = get(field)
@@ -92,8 +92,9 @@ class BusinessSerializer(TenantSerializer):
             data['versions'] = list(instance.versions.values('id', 'number', 'filename', 'sha256', 'created_at'))
             latest = instance.versions.first()
             user_id = self.context['request'].user.pk
-            data['can_review'] = (instance.status == 'pendiente' and instance.owner_id != user_id and
-                (latest is None or latest.uploaded_by_id != user_id))
+            administrator = self.context['view'].get_membership().role.name == 'administrador'
+            data['can_review'] = (instance.status == 'pendiente' and (administrator or
+                (instance.owner_id != user_id and (latest is None or latest.uploaded_by_id != user_id))))
             data['can_approve'] = (data['can_review'] and latest is not None and
                 (instance.expires_on is None or instance.expires_on >= timezone.localdate()))
             data['can_submit'] = instance.status in ('borrador', 'correcciones', 'rechazado') and latest is not None

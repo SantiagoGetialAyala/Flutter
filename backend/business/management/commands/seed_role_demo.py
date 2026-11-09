@@ -21,7 +21,8 @@ class Command(BaseCommand):
         password = secrets.token_urlsafe(18)
         org, _ = Organization.objects.get_or_create(name='Laboratorio de roles RiTech', tax_id='DEMO-ROLES')
         accounts, created_accounts = {}, []
-        for name, label in Role.ROLE_CHOICES:
+        for name in (*Role.BUSINESS_ROLES, Role.SUPERADMIN):
+            label = dict(Role.ROLE_CHOICES)[name]
             role, _ = Role.objects.get_or_create(name=name)
             email = f'{name}@roles.ritech.test'
             user = User.objects.filter(email=email).first()
@@ -45,23 +46,23 @@ class Command(BaseCommand):
         Farm.objects.get_or_create(organization=org, code='DEMO-FINCA', defaults={'name': 'Finca de demostración', 'producer': producer, 'area': 12})
         lot, _ = ProductLot.objects.get_or_create(organization=org, code='DEMO-CAFE-01', defaults={'producer': producer, 'product_type': 'cafe', 'quantity_initial': 1000, 'quantity_available': 1000, 'unit': 'kg', 'variety': 'Castillo'})
         Product.objects.get_or_create(organization=org, name='Café demo', defaults={'product_type': 'cafe', 'quantity': 1000, 'unit': 'kg'})
-        export, _ = ExportOperation.objects.get_or_create(organization=org, code='DEMO-EXP-01', defaults={'importer': buyer, 'destination_country': 'Alemania', 'destination_place': 'Hamburgo', 'incoterm': 'FOB', 'commercial_value': 2500, 'responsible': accounts['exportaciones'], 'estimated_departure': timezone.localdate() + timedelta(days=7)})
+        export, _ = ExportOperation.objects.get_or_create(organization=org, code='DEMO-EXP-01', defaults={'importer': buyer, 'destination_country': 'Alemania', 'destination_place': 'Hamburgo', 'incoterm': 'FOB', 'commercial_value': 2500, 'responsible': accounts['administrador'], 'estimated_departure': timezone.localdate() + timedelta(days=7)})
         allocation, allocation_created = ExportLotAllocation.objects.get_or_create(organization=org, export=export, lot=lot, defaults={'quantity': 100, 'unit': 'kg'})
         if allocation_created:
             from django.db.models import F
             ProductLot.objects.filter(pk=lot.pk).update(quantity_available=F('quantity_available') - 100)
             from operations.models import InventoryMovement
-            InventoryMovement.objects.create(organization=org, lot=lot, movement_type='reserva', quantity=100, reference=export.code, actor=accounts['exportaciones'])
+            InventoryMovement.objects.create(organization=org, lot=lot, movement_type='reserva', quantity=100, reference=export.code, actor=accounts['administrador'])
         m.Requirement.objects.get_or_create(organization=org, document_type='origen', name='Certificado de origen demo', defaults={'mandatory': True})
         vehicle, _ = m.Vehicle.objects.get_or_create(organization=org, plate='DEMO-001', defaults={'operator': accounts['logistica'], 'description': 'Camión demo'})
         driver, _ = m.Driver.objects.get_or_create(organization=org, license_number='DEMO-LICENCIA', defaults={'name': 'Conductor demo', 'operator': accounts['logistica'], 'license_expires_on': timezone.localdate() + timedelta(days=365)})
         m.Transport.objects.get_or_create(organization=org, export=export, assigned_to=accounts['logistica'], defaults={'vehicle': vehicle, 'driver': driver, 'pickup_place': 'Finca de demostración', 'delivery_place': 'Puerto de Cartagena', 'scheduled_pickup': timezone.now() + timedelta(days=3)})
         m.Order.objects.get_or_create(organization=org, export=export, reference='DEMO-PEDIDO-01', defaults={'description': 'Café Castillo', 'quantity': 100, 'unit': 'kg'})
-        m.Activity.objects.get_or_create(organization=org, export=export, title='Preparar expediente documental', defaults={'assigned_to': accounts['documental'], 'due_at': timezone.now() + timedelta(days=2)})
+        m.Activity.objects.get_or_create(organization=org, export=export, title='Preparar expediente documental', defaults={'assigned_to': accounts['administrador'], 'due_at': timezone.now() + timedelta(days=2)})
         m.Document.objects.get_or_create(organization=org, title='Certificado de origen demo', export=export, defaults={'owner': accounts['productor'], 'producer': producer, 'document_type': 'origen'})
         m.Supplier.objects.get_or_create(organization=org, identification='DEMO-TRANSPORTADOR', defaults={'name': 'Transportadora demo'})
         for kind, category, amount in [('costo', 'logistica', 300), ('ingreso', 'venta', 2500), ('presupuesto', 'logistica', 400)]:
-            m.FinanceEntry.objects.get_or_create(organization=org, export=export, description='Demo ' + kind, defaults={'kind': kind, 'category': category, 'amount': amount, 'base_amount': amount, 'actor': accounts['financiero']})
+            m.FinanceEntry.objects.get_or_create(organization=org, export=export, description='Demo ' + kind, defaults={'kind': kind, 'category': category, 'amount': amount, 'base_amount': amount, 'actor': accounts['administrador']})
         for role, user in accounts.items():
             if role != 'superadmin':
                 m.Notification.objects.get_or_create(organization=org, recipient=user, title='Bienvenido al laboratorio de roles', defaults={'message': 'Explora tu panel y los módulos autorizados. Los datos demo están separados de las otras empresas.'})
