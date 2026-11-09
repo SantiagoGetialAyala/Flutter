@@ -18,9 +18,9 @@ const lifecycleGuides = [
 
 String resourceOwner(String key) => switch (key) {
   'export-allocations' => 'Administrador reserva; productor registra el lote',
-  'orders' => 'Administrador registra; importador confirma recepción',
+  'orders' => 'Importador o administrador registra; importador confirma recepción',
   'requirements' || 'checklist' || 'compliance' => 'Administrador',
-  'documents' => 'Administrador carga y verifica',
+  'documents' => 'Administrador carga (se aprueba directo) o verifica',
   'transports' => 'El administrador asigna; transportador entrega',
   'finance' || 'quotes' => 'Administrador',
   'approvals' => 'Administrador',
@@ -119,7 +119,7 @@ String roleInstructions(String role) => switch (role) {
   'productor' =>
     'Registra tu perfil y luego tu finca: allí eliges su ubicación y organizas las parcelas. Después registra cosechas y lotes. El administrador reserva tus lotes y registra el pedido.',
   'importador' =>
-    'Consulta tus pedidos, envío y documentos compartidos. Cuando llegue la mercancía, confirma la recepción. El administrador registra tu pedido.',
+    'Registra tus pedidos, consulta tu envío y documentos compartidos, y confirma la recepción cuando llegue la mercancía.',
   'logistica' =>
     'Abre tu transporte asignado y registra recogida, salida y entrega con sus evidencias.',
   'documental' =>
