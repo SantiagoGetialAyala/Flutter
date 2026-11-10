@@ -390,8 +390,9 @@ class RecordCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = record;
-    final title =
-        '${r['title'] ?? r['name'] ?? r['business_name'] ?? r['code'] ?? r['reference'] ?? r['email'] ?? r['description'] ?? r['plate'] ?? r['key'] ?? 'Registro #${r['id']}'}';
+    final title = module == 'transports' && r['export_code'] != null
+        ? '${r['export_code']} · ${r['pickup_place'] != null ? '${r['pickup_place']} → ${r['delivery_place']}' : r['delivery_place'] ?? ''}'
+        : '${r['title'] ?? r['name'] ?? r['business_name'] ?? r['code'] ?? r['reference'] ?? r['email'] ?? r['description'] ?? r['plate'] ?? r['key'] ?? 'Registro #${r['id']}'}';
     final photo = [
       'exports',
       'lots',
@@ -411,6 +412,15 @@ class RecordCard extends StatelessWidget {
         ? (r['allocations'] is List && (r['allocations'] as List).isNotEmpty
               ? '${(r['allocations'] as List).length} lote(s) de origen'
               : 'Operación de exportación')
+        : module == 'transports'
+        ? [
+            if (r['destination_country'] != null)
+              'Destino: ${r['destination_country']}',
+            if (r['transporter_name'] != null)
+              'Transportador: ${r['transporter_name']}',
+            if (r['destination_country'] == null && r['pickup_place'] != null)
+              '${r['pickup_place']}',
+          ].join(' · ')
         : r['product_type'] != null
         ? '${friendly(r['product_type'])}${r['variety'] != null && r['variety'] != '' ? ' · ${r['variety']}' : ''}'
         : r['role'] != null

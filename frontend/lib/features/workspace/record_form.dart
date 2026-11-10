@@ -336,8 +336,10 @@ class _RecordFormState extends State<RecordForm> {
           ? (_relations[field['endpoint']] ?? [])
                 .where(
                   (item) =>
-                      widget.module['key'] != 'transports' ||
-                      key != 'assigned_to' ||
+                      ((widget.module['key'] != 'transports' ||
+                              key != 'assigned_to') &&
+                          (widget.module['key'] != 'exports' ||
+                              key != 'transporter')) ||
                       item['role'] == 'logistica',
                 )
                 .map(
@@ -383,7 +385,8 @@ class _RecordFormState extends State<RecordForm> {
         decoration: InputDecoration(
           labelText: label,
           helperText:
-              widget.module['key'] == 'transports' && key == 'assigned_to'
+              (widget.module['key'] == 'transports' && key == 'assigned_to') ||
+                  (widget.module['key'] == 'exports' && key == 'transporter')
               ? (items.isEmpty
                     ? 'El administrador debe invitar a una persona con rol Transportador.'
                     : 'Esta persona verá la entrega en Mis envíos y recibirá una notificación.')
@@ -559,6 +562,7 @@ class _RecordFormState extends State<RecordForm> {
           'name',
           'destination_country',
           'importer',
+          'transporter',
           'estimated_departure',
           'estimated_arrival',
           'currency',

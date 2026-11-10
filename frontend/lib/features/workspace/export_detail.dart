@@ -390,6 +390,11 @@ class _ExportDetailState extends State<ExportDetail> {
                 '${_record['importer_name'] ?? 'Por definir'}',
               ),
               _row(
+                Icons.local_shipping_outlined,
+                'Transportador',
+                '${_record['transporter_name'] ?? 'Por asignar'}',
+              ),
+              _row(
                 Icons.receipt_long_outlined,
                 'Incoterm',
                 _record['incoterm'] == ''

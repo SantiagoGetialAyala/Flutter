@@ -20,8 +20,8 @@ String resourceOwner(String key) => switch (key) {
   'export-allocations' => 'Administrador reserva; productor registra el lote',
   'orders' => 'Importador o administrador registra; importador confirma recepción',
   'requirements' || 'checklist' || 'compliance' => 'Administrador',
-  'documents' => 'Administrador carga (se aprueba directo) o verifica',
-  'transports' => 'El administrador asigna; transportador entrega',
+  'documents' => 'Productor, transportador o importador cargan; administrador aprueba',
+  'transports' => 'El administrador asigna desde la exportación; transportador entrega',
   'finance' || 'quotes' => 'Administrador',
   'approvals' => 'Administrador',
   _ => 'Equipo asignado',
@@ -74,10 +74,10 @@ String workLabel(String role) => switch (role) {
 };
 
 List<String> workModules(String role) => switch (role) {
-  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents'],
+  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents', 'exports'],
   'administrador' => ['exports', 'invitations', 'documents', 'finance'],
   'importador' => ['orders', 'exports', 'transports', 'documents'],
-  'logistica' => ['transports', 'transport-events', 'documents'],
+  'logistica' => ['transports', 'transport-events', 'documents', 'exports'],
   'documental' => ['exports', 'documents', 'requirements'],
   'financiero' => ['finance', 'exports'],
   'exportaciones' ||
@@ -87,11 +87,12 @@ List<String> workModules(String role) => switch (role) {
 };
 
 List<String> essentialModules(String role) => switch (role) {
-  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents'],
+  'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents', 'exports'],
   'importador' => ['orders', 'exports', 'transports', 'documents', 'incidents'],
   'logistica' => [
     'transports',
     'transport-events',
+    'exports',
     'vehicles',
     'drivers',
     'documents',

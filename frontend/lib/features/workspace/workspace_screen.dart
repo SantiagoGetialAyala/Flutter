@@ -16,7 +16,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/brand.dart';
 
 String recordTitle(Map<String, dynamic> row) =>
-    '${row['title'] ?? row['name'] ?? row['business_name'] ?? row['code'] ?? row['reference'] ?? row['email'] ?? row['description'] ?? row['plate'] ?? row['key'] ?? 'Registro #${row['id']}'}';
+    row['export_code'] != null &&
+        (row['pickup_place'] != null || row['delivery_place'] != null)
+    ? '${row['export_code']} · ${row['pickup_place'] != null ? '${row['pickup_place']} → ${row['delivery_place']}' : row['delivery_place']}'
+    : '${row['title'] ?? row['name'] ?? row['business_name'] ?? row['code'] ?? row['reference'] ?? row['email'] ?? row['description'] ?? row['plate'] ?? row['key'] ?? 'Registro #${row['id']}'}';
 
 class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({
