@@ -99,7 +99,7 @@ class BusinessSerializer(TenantSerializer):
                 (instance.expires_on is None or instance.expires_on >= timezone.localdate()))
             data['can_submit'] = instance.status in ('borrador', 'correcciones', 'rechazado') and latest is not None
         if isinstance(instance, m.Order):
-            data['can_confirm'] = (instance.received_at is None and
+            data['can_confirm'] = (instance.export_id is not None and instance.received_at is None and
                 instance.export.importer.user_id == self.context['request'].user.pk and
                 instance.export.status in ('arribada', 'entregada', 'cerrada'))
         if self.context['view'].get_membership().role.name == 'importador':
@@ -110,7 +110,53 @@ class BusinessSerializer(TenantSerializer):
         return data
 
 
+class OrderSerializer(BusinessSerializer):
+    requester_email = serializers.EmailField(source='requested_by.email', read_only=True, allow_null=True)
+    export_code = serializers.CharField(source='export.code', read_only=True, allow_null=True)
+    requested_documents = serializers.SerializerMethodField()
+    request_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = m.Order
+        exclude = ('organization', 'updated_at')
+        read_only_fields = ('requested_by', 'received_by', 'received_at', 'reception_notes', 'created_at')
+
+    def get_requested_documents(self, obj):
+        return [name for name in (
+            obj.requested_document_1,
+            obj.requested_document_2,
+            obj.requested_document_3,
+        ) if name]
+
+    def get_request_status(self, obj):
+        return 'atendida' if obj.export_id else 'pendiente'
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        role = self.context['view'].get_membership().role.name
+        if role == 'importador':
+            if attrs.get('export') is not None or (self.instance and self.instance.export_id):
+                raise serializers.ValidationError({'export': 'El administrador vincula la solicitud a la exportación.'})
+            country = attrs.get('destination_country', getattr(self.instance, 'destination_country', ''))
+            if not country:
+                raise serializers.ValidationError({'destination_country': 'Indica el país de destino.'})
+            documents = [
+                attrs.get(field, getattr(self.instance, field, ''))
+                for field in ('requested_document_1', 'requested_document_2', 'requested_document_3')
+            ]
+            names = [name.strip().casefold() for name in documents if name and name.strip()]
+            if not names:
+                raise serializers.ValidationError({'requested_document_1': 'Solicita al menos un documento (máximo tres).'})
+            if len(names) != len(set(names)):
+                raise serializers.ValidationError('No repitas el mismo documento solicitado.')
+        elif role == 'administrador' and self.instance is None and attrs.get('export') is None:
+            raise serializers.ValidationError({'export': 'El administrador crea la exportación desde una solicitud de importación.'})
+        return attrs
+
+
 def serializer_for(model):
+    if model == m.Order:
+        return OrderSerializer
     protected = [f.name for f in model._meta.fields if f.name in SERVER_FIELDS]
     if model in (m.Document, m.Transport, m.Approval):
         protected += ['status']

@@ -15,28 +15,29 @@ El identificador interno del Transportador continúa siendo `logistica` para con
 
 1. Entra como **Administrador** y abre **Invitar personas → Invitar persona**.
 2. Escribe el correo y elige uno de los cuatro roles. La descripción debajo del selector explica su trabajo.
-3. Indica a la persona que entre en **Crear cuenta**, complete sus datos y contraseña usando ese correo. La empresa y el rol se asignan automáticamente a partir de la invitación vigente; no selecciona rol ni necesita código. Si hay varias invitaciones vigentes para el correo, se usa la más reciente.
-4. Si ya tenía cuenta, inicia sesión y usa **Aceptar invitación**.
+3. Comparte el código que muestra el sistema. La persona crea primero su cuenta normal con ese correo.
+4. Después de iniciar sesión, usa **Aceptar invitación** y escribe el código. La empresa y el rol se asignan automáticamente; no selecciona rol.
 5. Vincula la cuenta importadora a su ficha en **Clientes e importadores**. El productor puede crear su propio perfil; si ya existía, administración vincula su cuenta.
 
-Puedes invitar a otro Administrador si necesitas compartir la gestión. La invitación vence a los siete días y se acepta una sola vez. El código se conserva como alternativa para personas que ya tenían cuenta.
+Puedes invitar a otro Administrador si necesitas compartir la gestión. Cada código vence a los siete días y solo se puede usar una vez.
 
 ## Recorrido de una exportación
 
 1. **Productor:** finca con sus parcelas → cosecha → lote disponible.
-2. **Administrador:** importador → exportación → reserva del lote → pedido.
-3. **Administrador:** requisitos → documentos con archivos → revisión → checklist → evaluación conforme → aprobación de despacho.
-4. **Administrador:** asigna un transporte a una cuenta Transportador.
-5. **Transportador:** registra recogida → inicio → entrega con archivos de evidencia.
-6. **Administrador:** actualiza los estados de la exportación hasta llegada y entrega.
-7. **Importador:** confirma recepción del pedido.
-8. **Administrador:** registra costos, ingresos y pagos; revisa pendientes y cierra.
+2. **Importador:** solicita café o cacao, cantidad, país de destino y hasta tres documentos.
+3. **Administrador:** abre la solicitud y pulsa **Crear exportación**. El expediente queda vinculado al importador y a su solicitud.
+4. **Administrador:** reserva lotes del producto solicitado hasta completar la cantidad; carga hasta tres documentos solicitados en **Documentos y versiones** y completa requisitos del destino.
+5. **Administrador:** asigna un transporte a una cuenta Transportador.
+6. **Transportador:** consulta solo sus cargas asignadas y registra recogida → inicio → entrega con archivos de evidencia.
+7. **Administrador:** actualiza los estados de la exportación hasta llegada y entrega.
+8. **Importador:** confirma recepción del pedido.
+9. **Administrador:** registra costos, ingresos y pagos; revisa pendientes y cierra.
 
 La [guía de prueba completa](prueba-exportacion-completa.md) contiene botones, cuentas de laboratorio, datos de ejemplo y PDF para cargar.
 
 ## Controles que se conservan
 
-El servidor comprueba empresa, propiedad, asignación, permisos y transiciones en cada petición. Productores, transportadores e importadores no invitan ni cambian funciones. Crear cuenta exige que exista una invitación pendiente y vigente para ese correo. El servidor ignora el rol enviado por clientes anteriores y utiliza únicamente el asignado por el administrador. La ruta separada **Quiero registrar mi empresa** crea una empresa nueva y su primera cuenta administradora; no concede acceso a empresas existentes.
+El servidor comprueba empresa, propiedad, asignación, permisos y transiciones en cada petición. Solo el superadministrador crea empresas y genera el código inicial para su administrador. Una cuenta se crea con correo y contraseña; el código se canjea después para vincularla a la empresa y asignarle el rol. Cada código debe estar pendiente, vigente y asociado al correo de la cuenta. Productores, transportadores e importadores no invitan ni cambian funciones.
 
 El Administrador puede verificar los documentos que él mismo cargó. Se registra quién subió y quién aprobó, junto con fecha y observaciones. El despacho sigue exigiendo archivos aprobados, vigentes, requisitos verificados y evaluación conforme. Una versión nueva devuelve el documento a borrador e invalida su verificación.
 

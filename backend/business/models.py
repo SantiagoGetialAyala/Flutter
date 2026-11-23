@@ -182,11 +182,17 @@ class Approval(TenantModel):
 
 
 class Order(TenantModel):
-    export = models.ForeignKey('operations.ExportOperation', on_delete=models.PROTECT, related_name='orders')
-    reference = models.CharField(max_length=100)
-    description = models.TextField()
-    quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=POSITIVE)
+    export = models.ForeignKey('operations.ExportOperation', null=True, blank=True, on_delete=models.PROTECT, related_name='orders')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='import_requests')
+    product_type = models.CharField(max_length=20, choices=[('cafe', 'Café'), ('cacao', 'Cacao')], default='cafe')
+    quantity = models.DecimalField(max_digits=14, decimal_places=3, validators=[MinValueValidator(Decimal('0.001'))])
     unit = models.CharField(max_length=20, choices=[('kg', 'kg'), ('tonelada', 'Tonelada')], default='kg')
+    destination_country = models.CharField(max_length=100, blank=True)
+    requested_document_1 = models.CharField(max_length=150, blank=True)
+    requested_document_2 = models.CharField(max_length=150, blank=True)
+    requested_document_3 = models.CharField(max_length=150, blank=True)
+    reference = models.CharField(max_length=100, blank=True)
+    description = models.TextField(blank=True)
     received_at = models.DateTimeField(null=True)
     reception_notes = models.TextField(blank=True)
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT)

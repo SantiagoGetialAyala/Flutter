@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from catalog.permissions import IsAdminRole
 
-from .models import AuditEvent, Membership, Organization, Role, User
+from .models import Membership, Organization, Role, User
 from .serializers import CompanyRegisterSerializer, LoginSerializer, RegisterSerializer, UserAdminSerializer, UserSerializer
 
 
@@ -66,26 +66,10 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         ).distinct()
 
     def perform_create(self, serializer):
-        from django.db import transaction
-        allowed_owner_roles = {Role.ADMINISTRADOR, Role.COMERCIAL}
-        from .access import is_platform
-        if not is_platform(self.request.user) and (not self.request.user.role or self.request.user.role.name not in allowed_owner_roles):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Selecciona Administrador al crear tu cuenta para registrar una empresa exportadora.")
-        with transaction.atomic():
-            organization = serializer.save()
-            role, _ = Role.objects.get_or_create(
-                name=Role.ADMINISTRADOR,
-                defaults={"description": "Administrador de empresa exportadora"},
-            )
-            Membership.objects.create(organization=organization, user=self.request.user, role=role)
-            AuditEvent.objects.create(
-                organization=organization,
-                actor=self.request.user,
-                action="organization.created",
-                resource_type="organization",
-                resource_id=str(organization.pk),
-            )
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied(
+            "Crea la empresa desde Empresas en el panel de plataforma para generar su código de acceso."
+        )
 
     def update(self, request, *args, **kwargs):
         membership = Membership.objects.filter(

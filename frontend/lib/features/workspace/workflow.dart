@@ -9,16 +9,16 @@ const lifecycleStages = [
 ];
 
 const lifecycleGuides = [
-  'Administrador · registra el importador, destino, condiciones y fechas; guarda el borrador.',
-  'Administrador · reserva los lotes del productor y registra el pedido del comprador.',
-  'Administrador · configura requisitos, revisa archivos, verifica el checklist y aprueba el despacho.',
+  'Importador · solicita café o cacao, cantidad, destino y hasta tres documentos.',
+  'Administrador · crea la exportación desde la solicitud y reserva los lotes del productor.',
+  'Administrador · carga los documentos solicitados y revisa los requisitos del destino.',
   'El administrador asigna el transporte. El transportador registra recogida, salida y entrega con evidencias.',
   'El administrador actualiza la llegada y entrega. El importador confirma recepción; el administrador registra pagos y cierra.',
 ];
 
 String resourceOwner(String key) => switch (key) {
   'export-allocations' => 'Administrador reserva; productor registra el lote',
-  'orders' => 'Importador o administrador registra; importador confirma recepción',
+  'orders' => 'Importador solicita; administrador prepara; importador confirma recepción',
   'requirements' || 'checklist' || 'compliance' => 'Administrador',
   'documents' => 'Productor, transportador o importador cargan; administrador aprueba',
   'transports' => 'El administrador asigna desde la exportación; transportador entrega',
@@ -75,7 +75,7 @@ String workLabel(String role) => switch (role) {
 
 List<String> workModules(String role) => switch (role) {
   'productor' => ['producers', 'farms', 'harvests', 'lots', 'documents', 'exports'],
-  'administrador' => ['exports', 'invitations', 'documents', 'finance'],
+  'administrador' => ['orders', 'exports', 'invitations', 'documents', 'finance'],
   'importador' => ['orders', 'exports', 'transports', 'documents'],
   'logistica' => ['transports', 'transport-events', 'documents', 'exports'],
   'documental' => ['exports', 'documents', 'requirements'],
@@ -102,6 +102,7 @@ List<String> essentialModules(String role) => switch (role) {
   'financiero' => ['finance', 'exports'],
   'administrador' => [
     'exports',
+    'orders',
     'invitations',
     'members',
     'producers',
@@ -128,7 +129,7 @@ String roleInstructions(String role) => switch (role) {
   'financiero' =>
     'Registra costos, ingresos y pagos de la exportación. Consulta el saldo y la rentabilidad.',
   'administrador' =>
-    'Invita al productor, transportador e importador. Crea la exportación y el pedido, verifica documentos, asigna el transporte, registra pagos y cierra la operación.',
+    'Revisa las solicitudes de importación, crea exportaciones, reserva lotes del productor, carga documentos, asigna transporte y registra pagos.',
   'gerencia' =>
     'Consulta el avance de las exportaciones y los resultados. Atiende las aprobaciones empresariales que requieran tu decisión.',
   _ =>

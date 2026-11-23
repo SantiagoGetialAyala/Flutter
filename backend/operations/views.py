@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import F
+from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -49,11 +50,14 @@ class OrganizationScopedViewSet(viewsets.ModelViewSet):
         # Filter inside the already scoped queryset; never widen tenant/owner access.
         from rest_framework import serializers
         fields = {field.name for field in queryset.model._meta.fields}
-        for name in ('export', 'lot', 'farm', 'plot', 'transport'):
+        for name in ('export', 'lot', 'farm', 'plot', 'transport', 'product_type'):
             value = self.request.query_params.get(name)
             if name in fields and value:
-                related_id = serializers.IntegerField(min_value=1).run_validation(value)
-                queryset = queryset.filter(**{name + '_id': related_id})
+                if name == 'product_type':
+                    queryset = queryset.filter(product_type=value)
+                else:
+                    related_id = serializers.IntegerField(min_value=1).run_validation(value)
+                    queryset = queryset.filter(**{name + '_id': related_id})
         return queryset if queryset.ordered else queryset.order_by("pk")
 
     @transaction.atomic
@@ -310,6 +314,18 @@ class ExportViewSet(OrganizationScopedViewSet):
         if next_status == "aprobada_despacho":
             from business.services import ensure_compliance
             ensure_compliance(export)
+        if next_status == 'pendiente_documentacion':
+            from business.models import Order
+            order = Order.objects.filter(export=export).order_by('pk').first()
+            if order:
+                allocations = export.allocations.filter(reserved=True)
+                allocated_kg = sum(
+                    item.quantity * (Decimal('1000') if item.unit == 'tonelada' else Decimal('1'))
+                    for item in allocations
+                )
+                requested_kg = order.quantity * (Decimal('1000') if order.unit == 'tonelada' else Decimal('1'))
+                if allocated_kg < requested_kg:
+                    raise ValidationError({'status': 'Reserva lotes del producto solicitado hasta completar la cantidad del importador antes de continuar.'})
         if export.status == "bloqueada" and (role not in {Role.ADMINISTRADOR, Role.DOCUMENTAL} or not str(request.data.get("notes", "")).strip()):
             raise PermissionDenied("Solo el administrador puede desbloquear, con una justificación.")
         previous = export.status
@@ -342,6 +358,20 @@ class ExportLotAllocationViewSet(OrganizationScopedViewSet):
             raise ValidationError({"export": "No se pueden cambiar lotes después de iniciar la revisión."})
         if ExportLotAllocation.objects.filter(export=export, lot=lot).exists():
             raise ValidationError({"lot": "Este lote ya está reservado para esta exportación."})
+        from business.models import Order
+        import_order = Order.objects.filter(export=export).order_by('pk').first()
+        if import_order:
+            if lot.product_type != import_order.product_type:
+                raise ValidationError({'lot': 'Selecciona un lote del mismo producto solicitado por el importador.'})
+            def kilograms(amount, unit):
+                return amount * 1000 if unit == 'tonelada' else amount
+            already_allocated = sum(
+                kilograms(item.quantity, item.unit)
+                for item in ExportLotAllocation.objects.filter(export=export)
+            )
+            requested = kilograms(import_order.quantity, import_order.unit)
+            if already_allocated + kilograms(quantity, unit) > requested:
+                raise ValidationError({'quantity': 'La reserva supera la cantidad solicitada por el importador.'})
         changed = ProductLot.objects.filter(pk=lot.pk, organization=self.organization, quantity_available__gte=quantity).update(quantity_available=F("quantity_available") - quantity)
         if changed != 1:
             raise ValidationError({"quantity": "La asignación excede el inventario disponible."})

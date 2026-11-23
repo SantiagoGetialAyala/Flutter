@@ -4,14 +4,9 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({
-    super.key,
-    required this.authService,
-    this.createCompany = false,
-  });
+  const RegisterScreen({super.key, required this.authService});
 
   final AuthService authService;
-  final bool createCompany;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -24,8 +19,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
-  final _companyController = TextEditingController();
-  final _taxController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _error;
@@ -37,8 +30,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
-    _companyController.dispose();
-    _taxController.dispose();
     super.dispose();
   }
 
@@ -53,25 +44,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      if (widget.createCompany) {
-        await widget.authService.registerCompany(
-          firstName: _firstNameController.text,
-          lastName: _lastNameController.text,
-          email: _emailController.text,
-          password: _passwordController.text,
-          passwordConfirm: _confirmController.text,
-          companyName: _companyController.text,
-          taxId: _taxController.text,
-        );
-      } else {
-        await widget.authService.register(
-          firstName: _firstNameController.text,
-          lastName: _lastNameController.text,
-          email: _emailController.text,
-          password: _passwordController.text,
-          passwordConfirm: _confirmController.text,
-        );
-      }
+      await widget.authService.register(
+        firstName: _firstNameController.text,
+        lastName: _lastNameController.text,
+        email: _emailController.text,
+        password: _passwordController.text,
+        passwordConfirm: _confirmController.text,
+      );
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
     } on AuthException catch (error) {
@@ -104,52 +83,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          widget.createCompany
-                              ? 'Registrar mi empresa'
-                              : 'Crear mi cuenta',
+                          'Crear mi cuenta',
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          widget.createCompany
-                              ? 'Crea tu empresa y tu cuenta administradora en un solo paso. Después podrás invitar a tu equipo.'
-                              : 'Usa el correo al que te invitó el administrador. Solo completa tus datos y contraseña. Tu empresa y tu rol se asignan automáticamente con ese correo.',
+                          'Crea tu cuenta con tu correo y contraseña. Si una empresa te invitó, después de iniciar sesión podrás ingresar el código para unirte con el rol asignado.',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(height: 24),
                         _nameFields(),
                         const SizedBox(height: 16),
-                        if (widget.createCompany) ...[
-                          TextFormField(
-                            controller: _companyController,
-                            decoration: const InputDecoration(
-                              labelText: 'Nombre de la empresa',
-                              prefixIcon: Icon(Icons.business_outlined),
-                            ),
-                            validator: (value) => (value ?? '').trim().isEmpty
-                                ? 'Escribe el nombre de tu empresa.'
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _taxController,
-                            decoration: const InputDecoration(
-                              labelText: 'NIT (opcional)',
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
                         TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           autofillHints: const [AutofillHints.email],
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Correo',
-                            helperText: widget.createCompany
-                                ? 'Será tu correo de acceso como administrador.'
-                                : 'Debe ser el mismo correo que registró el administrador.',
-                            helperMaxLines: 2,
                             prefixIcon: Icon(Icons.email_outlined),
                           ),
                           validator: (value) {
@@ -224,11 +175,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     strokeWidth: 2.4,
                                   ),
                                 )
-                              : Text(
-                                  widget.createCompany
-                                      ? 'Crear empresa y cuenta'
-                                      : 'Crear cuenta',
-                                ),
+                              : const Text('Crear cuenta'),
                         ),
                         const SizedBox(height: 12),
                         TextButton(
@@ -238,21 +185,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   context,
                                 ).pushReplacementNamed(AppRoutes.login),
                           child: const Text('Ya tengo cuenta'),
-                        ),
-                        TextButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () =>
-                                    Navigator.of(context).pushReplacementNamed(
-                                      widget.createCompany
-                                          ? AppRoutes.register
-                                          : AppRoutes.registerCompany,
-                                    ),
-                          child: Text(
-                            widget.createCompany
-                                ? 'Tengo una invitación de una empresa'
-                                : 'Quiero registrar mi empresa',
-                          ),
                         ),
                       ],
                     ),

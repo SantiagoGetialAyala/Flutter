@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Max, Sum
+from django.db.models import Max, Q, Sum
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -12,6 +12,9 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from operations.views import OrganizationScopedViewSet
 from users.access import audit, require
+from users.models import Membership, Role
+from catalog.models import Client, Country
+from operations.models import ExportOperation, ExportStatusHistory
 from . import models as m
 from .serializers import serializer_for
 
@@ -50,6 +53,12 @@ class DocumentViewSet(BusinessViewSet):
     queryset = m.Document.objects.all().order_by('-pk').prefetch_related('versions')
     serializer_class = serializer_for(m.Document)
     search_fields = ('title', 'document_type', 'status')
+
+    def perform_create(self, serializer):
+        export = serializer.validated_data.get('export')
+        if export and m.Document.objects.filter(export=export).count() >= 3:
+            raise ValidationError('Por ahora cada exportación admite hasta tres documentos solicitados.')
+        super().perform_create(serializer)
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -115,6 +124,19 @@ class DocumentViewSet(BusinessViewSet):
         doc.status = 'aprobado' if approved else 'correcciones' if request.data.get('corrections') else 'rechazado'
         doc.reviewer, doc.reviewed_at, doc.review_notes = request.user, timezone.now(), notes
         doc.save()
+        if approved and doc.export_id:
+            matching_requirements = m.Requirement.objects.filter(
+                organization=self.organization,
+                document_type=doc.document_type,
+                is_active=True,
+            ).filter(
+                Q(destination_country='') | Q(destination_country__iexact=doc.export.destination_country)
+            )
+            m.ChecklistItem.objects.filter(
+                organization=self.organization,
+                export=doc.export,
+                requirement__in=matching_requirements,
+            ).update(passed=True, notes='Documento cargado y aprobado.', evaluated_by=request.user)
         m.Notification.objects.create(organization=self.organization, recipient=doc.owner, title='Revisión documental: ' + doc.title, message=f'{doc.status}: {notes}')
         audit(request, self.organization, 'document.' + doc.status, doc, {'notes': notes})
         return Response(self.get_serializer(doc).data)
@@ -210,13 +232,141 @@ class ApprovalViewSet(BusinessViewSet):
 
 class OrderViewSet(BusinessViewSet):
     module = 'orders'
-    queryset = m.Order.objects.all().order_by("-pk")
+    queryset = m.Order.objects.select_related('export__importer', 'requested_by').all().order_by("-pk")
     serializer_class = serializer_for(m.Order)
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        role = self.get_membership().role.name
+        if role == 'importador' and serializer.validated_data.get('export'):
+            raise ValidationError({'export': 'Envía la solicitud; la empresa creará y vinculará la exportación.'})
+        super().perform_create(serializer)
+        order = serializer.instance
+        if not order.reference:
+            order.reference = f'SOL-{order.pk:06d}'
+            order.save(update_fields=['reference', 'updated_at'])
+        if role == 'importador':
+            message = f'{order.get_product_type_display()} · {order.quantity} {order.unit} · destino {order.destination_country}'
+            admins = Membership.objects.filter(
+                organization=self.organization,
+                role__name=Role.ADMINISTRADOR,
+                is_active=True,
+                user__is_active=True,
+            ).select_related('user')
+            m.Notification.objects.bulk_create([
+                m.Notification(
+                    organization=self.organization,
+                    recipient=member.user,
+                    title='Nueva solicitud de importación',
+                    message=message,
+                )
+                for member in admins
+            ])
+
+    @action(detail=True, methods=['post'], url_path='create-export')
+    @transaction.atomic
+    def create_export(self, request, pk=None):
+        membership = self.get_membership()
+        if membership.role.name != Role.ADMINISTRADOR:
+            raise PermissionDenied('Solo el administrador de la empresa puede crear la exportación desde la solicitud.')
+        require(membership.role.name, 'exports', 'create')
+        order = m.Order.objects.select_for_update().get(pk=self.get_object().pk)
+        if order.export_id:
+            raise ValidationError({'export': 'Esta solicitud ya está vinculada a una exportación.'})
+        if not order.requested_by_id:
+            raise ValidationError('La solicitud no tiene una cuenta de importador vinculada.')
+
+        country = Country.objects.filter(name__iexact=order.destination_country, is_active=True).first()
+        if country is None:
+            raise ValidationError({'destination_country': 'Selecciona un país válido del catálogo.'})
+
+        client = Client.objects.filter(
+            organization=self.organization, user=order.requested_by,
+        ).first()
+        if client is None:
+            client = Client.objects.filter(
+                organization=self.organization,
+                email__iexact=order.requested_by.email,
+            ).first()
+            if client and client.user_id not in (None, order.requested_by_id):
+                raise ValidationError('La ficha del importador está vinculada a otra cuenta.')
+            if client and client.user_id is None:
+                client.user = order.requested_by
+                client.save(update_fields=['user', 'updated_at'])
+        if client is None:
+            if Client.objects.filter(email__iexact=order.requested_by.email).exists():
+                raise ValidationError('El correo del importador ya está asociado a una ficha de otra empresa.')
+            client = Client.objects.create(
+                organization=self.organization,
+                user=order.requested_by,
+                business_name=(order.requested_by.get_full_name() or f"Importador {order.requested_by.email}")[:160],
+                email=order.requested_by.email,
+                country=country,
+            )
+
+        code = str(request.data.get('code') or f'EXP-SOL-{order.pk:06d}').strip()[:40]
+        if not code:
+            raise ValidationError({'code': 'Indica un código para la exportación.'})
+        export = ExportOperation.objects.create(
+            organization=self.organization,
+            code=code,
+            importer=client,
+            destination_country=order.destination_country,
+            responsible=request.user,
+            status='borrador',
+        )
+        order.export = export
+        order.save(update_fields=['export', 'updated_at'])
+        ExportStatusHistory.objects.create(
+            organization=self.organization, export=export,
+            previous_status='', new_status='borrador', actor=request.user,
+        )
+
+        requested_documents = [
+            name.strip() for name in (
+                order.requested_document_1,
+                order.requested_document_2,
+                order.requested_document_3,
+            ) if name and name.strip()
+        ]
+        for index, name in enumerate(requested_documents, start=1):
+            document_type = f'solicitado-{order.pk}-{index}'[:60]
+            requirement, _ = m.Requirement.objects.get_or_create(
+                organization=self.organization,
+                destination_country=order.destination_country,
+                document_type=document_type,
+                defaults={'name': name, 'mandatory': True, 'is_active': True},
+            )
+            m.ChecklistItem.objects.get_or_create(
+                organization=self.organization,
+                export=export,
+                requirement=requirement,
+                defaults={'passed': False, 'evaluated_by': request.user},
+            )
+            m.Document.objects.create(
+                organization=self.organization,
+                export=export,
+                owner=request.user,
+                title=name,
+                document_type=document_type,
+                shared_with_client=True,
+            )
+
+        audit(request, self.organization, 'export.created_from_import_request', export, {'order': order.pk})
+        m.Notification.objects.create(
+            organization=self.organization,
+            recipient=order.requested_by,
+            title='Tu solicitud está en preparación',
+            message=f'La empresa inició la exportación {export.code}.',
+        )
+        return Response({'export': export.pk, 'code': export.code}, status=201)
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def confirm(self, request, pk=None):
         order = m.Order.objects.select_for_update().get(pk=self.get_object().pk, pk__in=self.get_queryset().values('pk'))
+        if order.export_id is None:
+            raise ValidationError('La empresa todavía no ha creado la exportación de esta solicitud.')
         if order.export.importer.user_id != request.user.pk:
             raise PermissionDenied('Solo el cliente vinculado puede confirmar la recepción.')
         if order.received_at or order.export.status not in ('arribada', 'entregada', 'cerrada'):

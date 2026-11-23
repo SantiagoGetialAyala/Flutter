@@ -137,20 +137,20 @@ Como **administrador**, abre **PRUEBA-EXP-001**, comprueba recepción, entrega y
 
 **Resultado final:** exportación cerrada, pedido recibido, transporte entregado, documentos aprobados y movimientos financieros consultables. El historial conserva los cambios. La comprobación de recepción y pagos antes del cierre es una revisión del administrador; la transición de cierre actual no los concilia automáticamente.
 
-## Crear tu propia empresa y cuentas, en vez de usar el laboratorio
+## Crear una empresa y sus cuentas, en vez de usar el laboratorio
 
-Esta preparación se hace una vez:
+El alta inicial la debe hacer una cuenta superadministradora:
 
-1. Desde **Crear cuenta** pulsa **Quiero registrar mi empresa**. Completa nombre de empresa, NIT opcional, tus datos, correo y contraseña. No hay selector de rol.
-2. Pulsa **Crear empresa y cuenta**. La empresa y su cuenta administradora se crean juntas; entras directamente a la empresa.
-3. Desde **Invitar personas**, crea una invitación por participante: **Productor**, **Transportador** e **Importador**. Puedes invitar a otro **Administrador** si necesitas ayuda. Usa correos distintos para probar cada función.
-4. Cada persona abre **Crear cuenta**, completa nombre, apellido, el mismo correo invitado y su contraseña. El servidor encuentra la invitación vigente de ese correo y aplica su empresa y rol automáticamente. No elige rol ni escribe código. Si ya tenía cuenta, inicia sesión y pulsa **Aceptar invitación** con el código que puede consultar el administrador.
+1. El superadministrador abre **Empresas → Nueva empresa**, registra nombre, NIT y correo del primer administrador. Comparte con esa persona el código que aparece al guardar.
+2. El administrador crea su cuenta normal con ese correo, inicia sesión y canjea el código desde **Aceptar invitación**.
+3. Desde **Invitar personas**, crea una invitación por participante: **Productor**, **Transportador** e **Importador**. También puede invitar a otro **Administrador**. Usa un correo distinto para cada cuenta y comparte cada código.
+4. Cada persona crea su cuenta normal con el correo invitado, inicia sesión y pulsa **Aceptar invitación** para ingresar su código. No elige rol; la empresa y la función se asignan automáticamente.
 5. El productor crea su **Perfil de productor**; queda vinculado a su cuenta. Después registra finca, cosecha y lote como en el paso 2.
 6. El administrador crea el cliente/importador y selecciona su **Cuenta vinculada**. Si la ficha del productor ya existía, administración debe vincularla también a su cuenta desde **Perfil de productor → Editar**.
 7. El administrador configura al menos un requisito obligatorio para el destino. Para la simulación usa tipo `origen` y nombre **Certificado de origen**.
 8. Continúa desde el paso 3 de esta guía con el importador y el productor de tu empresa.
 
-El administrador avisa a la persona que ya puede crear su cuenta con el correo invitado; el programa no envía correos automáticamente. El código queda como alternativa para vincular una cuenta que ya existía. La cuenta de acceso y la ficha de productor o importador son registros distintos: la vinculación permite mostrar a cada persona sus datos.
+El administrador comparte el código manualmente; el programa no envía correos automáticamente. Cada código vence a los siete días y solo se usa una vez. La cuenta de acceso y la ficha de productor o importador son registros distintos: la vinculación permite mostrar a cada persona sus datos.
 
 ## Qué puedes omitir en la primera prueba
 

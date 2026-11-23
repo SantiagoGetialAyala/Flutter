@@ -83,7 +83,9 @@ class AccountDetailsSerializer(serializers.Serializer):
     def validate_email(self, value):
         email = User.objects.normalize_email(value)
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("Ya existe una cuenta con este correo. Inicia sesión para continuar.")
+            raise serializers.ValidationError(
+                "Este correo ya tiene cuenta. Inicia sesión y usa Aceptar invitación para ingresar el código de tu empresa."
+            )
         return email
 
     def validate(self, attrs):
@@ -99,40 +101,26 @@ class AccountDetailsSerializer(serializers.Serializer):
 
 
 class RegisterSerializer(AccountDetailsSerializer):
-    # Kept optional for forms that already send the code. Roles sent by older
-    # clients are ignored: the administrator's invitation is authoritative.
-    invitation_code = serializers.UUIDField(write_only=True, required=False, allow_null=True,
+    # Account creation is independent from organization membership. A user may
+    # optionally redeem a code here, or sign in and accept it later.
+    invitation_code = serializers.UUIDField(write_only=True, required=False,
         error_messages={'invalid': 'Revisa el código de invitación.'})
 
     @transaction.atomic
     def create(self, validated_data):
-        from .invitations import accept_invitation, accept_email_invitation
+        from .invitations import accept_invitation
         token = validated_data.pop('invitation_code', None)
         validated_data.pop('password_confirm')
         user = User.objects.create_user(**validated_data)
-        invitation = accept_invitation(user, token) if token else accept_email_invitation(user)
-        user.role = invitation.role
-        user.save(update_fields=['role'])
+        if token:
+            invitation = accept_invitation(user, token)
+            user.role = invitation.role
+            user.save(update_fields=['role'])
         return user
 
 
-class CompanyRegisterSerializer(AccountDetailsSerializer):
-    company_name = serializers.CharField(max_length=180)
-    tax_id = serializers.CharField(max_length=40, required=False, allow_blank=True)
-
-    @transaction.atomic
-    def create(self, validated_data):
-        from .models import AuditEvent, Membership, Organization
-        name = validated_data.pop('company_name')
-        tax_id = validated_data.pop('tax_id', '')
-        validated_data.pop('password_confirm')
-        role = Role.objects.get(name=Role.ADMINISTRADOR, is_active=True)
-        user = User.objects.create_user(role=role, **validated_data)
-        organization = Organization.objects.create(name=name, tax_id=tax_id)
-        Membership.objects.create(organization=organization, user=user, role=role)
-        AuditEvent.objects.create(actor=user, organization=organization,
-            action='organization.created', resource_type='organization', resource_id=str(organization.pk))
-        return user
+class CompanyRegisterSerializer(RegisterSerializer):
+    """Legacy route: company admins must redeem a platform invitation too."""
 
 
 class UserAdminSerializer(serializers.ModelSerializer):

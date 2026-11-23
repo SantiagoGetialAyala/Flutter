@@ -269,25 +269,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Future<void> _createOrganization() async {
-    if (widget.user.isPlatform) {
-      if (_org != null) {
-        await _switchOrganization(null);
-      }
-      if (!mounted) return;
-      await _selectModule('platform-organizations');
-      await _form();
-      return;
-    }
-    final name = await _prompt(
-      'Crear organización',
-      label: 'Nombre de la empresa',
-    );
-    if (name == null || name.isEmpty) return;
-    await _run(() async {
-      final org = await api.post('/organizations/', {'name': name});
-      await api.setActiveOrganization('${org['id']}');
-      await _initialize();
-    });
+    if (!widget.user.isPlatform) return;
+    if (_org != null) await _switchOrganization(null);
+    if (!mounted) return;
+    await _selectModule('platform-organizations');
+    await _form();
   }
 
   Future<void> _run(
@@ -422,6 +408,22 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       }
       await _loadRecords();
     }, propagate: moduleKey != null);
+  }
+
+  Future<void> _createExportFromRequest(Map<String, dynamic> request) async {
+    await _run(() async {
+      final result = await api.post(
+        '/orders/${request['id']}/create-export/',
+        const {},
+      );
+      await _loadRecords();
+      await _refreshTasks();
+      final export = await api.getMap('/exports/${result['export']}/');
+      if (!mounted) return;
+      setState(() => _module = 'exports');
+      await _loadRecords();
+      if (mounted) await _detail(export);
+    });
   }
 
   Future<void> _showData(String title, dynamic value) async {
@@ -878,8 +880,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   _inviteAccept();
                 },
               ),
-              if (widget.user.isPlatform ||
-                  ['administrador', 'comercial'].contains(widget.user.role))
+              if (widget.user.isPlatform)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.add_business_outlined),
@@ -1568,7 +1569,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Pide al administrador que abra Equipo → Invitar personas, ingrese tu correo y seleccione tu función (por ejemplo, Productor). Si aún no tienes cuenta, créala con ese mismo correo y entrarás automáticamente. Si ya tienes cuenta, acepta aquí el código. Al entrar como productor, registra tu perfil, finca y lote.',
+              'Crea tu cuenta con tu correo normal. Después de iniciar sesión, pide al administrador el código de invitación y escríbelo aquí para entrar a su empresa con la función asignada. Al entrar como productor, registra tu perfil, finca y lote.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.muted),
             ),
@@ -1578,11 +1579,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               icon: const Icon(Icons.mail_outline),
               label: const Text('Aceptar invitación'),
             ),
-            if (['administrador', 'comercial'].contains(widget.user.role))
-              TextButton(
-                onPressed: _createOrganization,
-                child: const Text('Registrar mi empresa'),
-              ),
           ],
         ),
       ),
@@ -2287,6 +2283,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             'Invita a tu equipo',
             'Indica a la persona que cree su cuenta con el correo invitado. Su empresa y rol se asignan automáticamente.',
           ),
+        if (_module == 'orders' && _role == 'importador')
+          _helper(
+            'Solicita una importación',
+            'Indica café o cacao, cantidad, destino y hasta tres documentos. La empresa recibe la solicitud y prepara la exportación.',
+          ),
+        if (_module == 'orders' && _role == 'administrador')
+          _helper(
+            'Solicitudes de importación',
+            'Abre una solicitud y crea la exportación. El sistema preparará los documentos pedidos para cargarlos desde el expediente.',
+          ),
         if (_module == 'members')
           _helper(
             'Un equipo, distintos permisos',
@@ -2333,12 +2339,23 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     menu: _recordMenu(row, m),
                   ),
                   if (m['can_update'] == true ||
-                      (m['actions'] as List).isNotEmpty)
+                      (m['actions'] as List).isNotEmpty ||
+                      (_module == 'orders' &&
+                          _role == 'administrador' &&
+                          row['export'] == null))
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: Wrap(
                         spacing: 4,
                         children: [
+                          if (_module == 'orders' &&
+                              _role == 'administrador' &&
+                              row['export'] == null)
+                            FilledButton.tonalIcon(
+                              onPressed: () => _createExportFromRequest(row),
+                              icon: const Icon(Icons.add_box_outlined),
+                              label: const Text('Crear exportación'),
+                            ),
                           if (_canRecordTransport(m, row))
                             TextButton(
                               onPressed: () => _transportEvent(row),

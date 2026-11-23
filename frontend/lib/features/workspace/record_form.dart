@@ -98,10 +98,17 @@ class _RecordFormState extends State<RecordForm> {
       await Future.wait(
         endpoints.map((endpoint) async {
           final exportId = widget.initialValues['export'];
-          final query =
-              exportId != null && ['documents', 'transports'].contains(endpoint)
-              ? '?export=$exportId'
-              : '';
+          final queryParameters = <String, String>{};
+          if (exportId != null && ['documents', 'transports'].contains(endpoint)) {
+            queryParameters['export'] = '$exportId';
+          }
+          final productType = widget.initialValues['product_type'];
+          if (endpoint == 'lots' && productType != null) {
+            queryParameters['product_type'] = '$productType';
+          }
+          final query = queryParameters.isEmpty
+              ? ''
+              : '?${Uri(queryParameters: queryParameters).query}';
           _relations[endpoint] = await widget.api.getAll('/$endpoint/$query');
         }),
       );
@@ -193,17 +200,17 @@ class _RecordFormState extends State<RecordForm> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Indica a ${invitation['email']} que abra Crear cuenta y use ese mismo correo. La empresa y el rol que asignaste se aplican automáticamente; no necesita elegir rol ni escribir un código.',
+                  'Comparte este código con ${invitation['email']}. La persona puede crear primero su cuenta normal. Luego inicia sesión con este mismo correo, pulsa Aceptar invitación y escribe el código para entrar a la empresa con el rol asignado.',
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  '${invitation['token']}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
                 const Text('La invitación está vigente durante 7 días.'),
-                ExpansionTile(
-                  title: const Text('Si la persona ya tiene cuenta'),
-                  children: [
-                    const Text('Puede iniciar sesión y usar Aceptar invitación con este código:'),
-                    SelectableText('${invitation['token']}'),
-                  ],
-                ),
               ],
             ),
             actions: [
@@ -230,6 +237,9 @@ class _RecordFormState extends State<RecordForm> {
   String _label(Map<String, dynamic> item) {
     if (item['harvest_date'] != null) {
       return 'Cosecha ${item['harvest_date']} · ${item['farm_name'] ?? ''} · ${item['plot_name'] ?? ''}';
+    }
+    if (item['code'] != null && item['product_type'] != null && item['quantity_available'] != null) {
+      return '${item['code']} · ${friendly(item['product_type'])} · disponible ${number(item['quantity_available'])} ${item['unit'] ?? 'kg'}';
     }
     final label =
         '${item['name'] ?? item['title'] ?? item['business_name'] ?? item['code'] ?? item['reference'] ?? item['plate'] ?? item['email'] ?? (item['rate'] == null ? 'Registro #${item['id']}' : '${item['base_currency']} → ${item['target_currency']} · ${item['rate']}')}';
@@ -405,7 +415,15 @@ class _RecordFormState extends State<RecordForm> {
             ),
           ...items,
         ],
-        onChanged: (v) => setState(() => _values[key] = v == '' ? null : v),
+        onChanged: (v) => setState(() {
+          _values[key] = v == '' ? null : v;
+          if (widget.module['key'] == 'export-allocations' && key == 'lot') {
+            final selectedLot = (_relations[endpoint] ?? [])
+                .where((lot) => '${lot['id']}' == v)
+                .firstOrNull;
+            if (selectedLot != null) _values['unit'] = '${selectedLot['unit']}';
+          }
+        }),
         validator: (v) => required && (v == null || v.isEmpty)
             ? 'Selecciona una opción.'
             : null,
@@ -585,7 +603,9 @@ class _RecordFormState extends State<RecordForm> {
         )
       : AlertDialog(
           title: Text(
-            widget.module['key'] == 'exports' && widget.record == null
+            widget.module['key'] == 'orders' && widget.record == null
+                ? 'Solicitud de importación'
+                : widget.module['key'] == 'exports' && widget.record == null
                 ? 'Iniciar operación'
                 : '${widget.record == null ? 'Nuevo' : 'Editar'} · ${widget.module['label']}',
           ),
@@ -612,6 +632,7 @@ class _RecordFormState extends State<RecordForm> {
                             ),
                           if (widget.intro != null ||
                               widget.module['key'] == 'invitations' ||
+                              widget.module['key'] == 'orders' ||
                               (widget.module['key'] == 'transports' &&
                                   widget.record == null) ||
                               (widget.module['key'] == 'exports' &&
@@ -621,7 +642,9 @@ class _RecordFormState extends State<RecordForm> {
                               child: Text(
                                 widget.intro ??
                                     (widget.module['key'] == 'invitations'
-                                        ? 'El administrador invita al equipo. Productor registra mercancía; Transportador hace las entregas; Importador confirma recepción. Otro Administrador puede ayudarte a gestionar exportaciones, documentos y pagos.'
+                                        ? 'El administrador elige el correo y el rol. El sistema genera un código de un solo uso que la persona ingresa después de crear su cuenta, desde Aceptar invitación.'
+                                        : widget.module['key'] == 'orders'
+                                        ? 'Indica el producto, la cantidad, el país de destino y hasta tres documentos. La empresa recibirá tu solicitud para preparar la exportación.'
                                         : widget.module['key'] == 'transports'
                                         ? 'Elige el transportador responsable, los lugares de recogida y entrega y la fecha prevista. Al guardar, esa persona recibe una notificación y la carga aparece en Mis envíos. Solo ella registra recogida, salida y entrega.'
                                         : 'Paso 1 de 5 · Datos comerciales y destino. Guarda un borrador; los lotes, documentos y transporte se coordinan después con tu equipo.'),
@@ -668,10 +691,13 @@ class _RecordFormState extends State<RecordForm> {
                 _saving
                     ? 'Guardando…'
                     : widget.saveLabel ??
-                          (widget.module['key'] == 'exports' &&
+                          (widget.module['key'] == 'orders' &&
                                   widget.record == null
-                              ? 'Guardar borrador'
-                              : 'Guardar'),
+                              ? 'Enviar solicitud'
+                              : widget.module['key'] == 'exports' &&
+                                  widget.record == null
+                                  ? 'Guardar borrador'
+                                  : 'Guardar'),
               ),
             ),
           ],

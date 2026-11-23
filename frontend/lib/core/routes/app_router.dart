@@ -28,8 +28,7 @@ class AppRouter {
         );
       case AppRoutes.registerCompany:
         return MaterialPageRoute(
-          builder: (_) =>
-              RegisterScreen(authService: authService, createCompany: true),
+          builder: (_) => RegisterScreen(authService: authService),
           settings: settings,
         );
       case AppRoutes.register:

@@ -24,9 +24,11 @@ def scope(queryset, membership, user):
             return qs.filter(producer__user=user).distinct()
         return qs.filter(**{paths[model]: user}).distinct() if model in paths else qs.none()
     if role == 'importador':
-        paths = {'client': 'user', 'exportoperation': 'importer__user', 'order': 'export__importer__user', 'transport': 'export__importer__user', 'incident': 'export__importer__user'}
+        paths = {'client': 'user', 'exportoperation': 'importer__user', 'transport': 'export__importer__user', 'incident': 'export__importer__user'}
         if model == 'document':
             return qs.filter(export__importer__user=user, shared_with_client=True, status='aprobado')
+        if model == 'order':
+            return qs.filter(Q(requested_by=user) | Q(export__importer__user=user)).distinct()
         return qs.filter(**{paths[model]: user}).distinct() if model in paths else qs.none()
     if role == 'logistica':
         paths = {'transport': 'assigned_to', 'transportevent': 'transport__assigned_to', 'vehicle': 'operator', 'driver': 'operator', 'exportoperation': 'transports__assigned_to', 'activity': 'assigned_to', 'incident': 'transport__assigned_to'}

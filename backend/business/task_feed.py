@@ -12,7 +12,7 @@ def pending_tasks(membership, user, allowed):
         'transports': {'logistica'},
         'finance': {'administrador', 'financiero'},
         'approvals': {'administrador', 'gerencia'},
-        'orders': {'importador'},
+        'orders': {'importador', 'administrador'},
     }
 
     def collect(module, model, title, action, filters, exclude=None, due=None, review=False):
@@ -47,7 +47,10 @@ def pending_tasks(membership, user, allowed):
     collect('transports', m.Transport, lambda r: f'Atender envío #{r.pk}: {r.pickup_place} → {r.delivery_place}', ['update'], {'assigned_to': user, 'status__in': ['asignado', 'recogido', 'en_transito']}, due='scheduled_pickup')
     collect('finance', m.FinanceEntry, lambda r: 'Registrar pago: ' + r.description, ['update'], {'payment_status__in': ['pendiente', 'parcial']}, due='due_date')
     collect('approvals', m.Approval, lambda r: 'Decidir: ' + r.title, ['approve', 'reject'], {'status': 'pendiente'}, exclude={'requested_by': user})
-    collect('orders', m.Order, lambda r: 'Confirmar recepción: ' + r.reference, ['submit'], {'received_at__isnull': True, 'export__importer__user': user, 'export__status__in': ['arribada', 'entregada', 'cerrada']})
+    if role == 'administrador':
+        collect('orders', m.Order, lambda r: 'Atender solicitud: ' + (r.reference or str(r.pk)), ['create'], {'export__isnull': True})
+    else:
+        collect('orders', m.Order, lambda r: 'Confirmar recepción: ' + (r.reference or str(r.pk)), ['submit'], {'received_at__isnull': True, 'export__importer__user': user, 'export__status__in': ['arribada', 'entregada', 'cerrada']})
     if role in {'administrador', 'exportaciones', 'comercial', 'documental'} and 'view' in allowed.get('exports', []):
         from operations.models import ExportOperation
         from operations.workflow import allowed_transitions

@@ -28,9 +28,9 @@ La plataforma es multiempresa. Una cuenta puede pertenecer a varias organizacion
 
 **Alta asistida:** el superadministrador entra a Administración de plataforma → Empresas → Nueva empresa. Registra nombre, NIT y correo del primer administrador. Se crea una invitación de administrador válida durante siete días. El código se muestra al finalizar y puede recuperarse desde el detalle de la empresa mientras siga pendiente y vigente. Se comparte manualmente con su destinatario; no hay envío automático de correo.
 
-El destinatario crea su cuenta individual o inicia sesión con el correo invitado y acepta el código. Desde ese momento administra esa empresa y puede invitar empleados, productores, responsables documentales, transportadores, financieros o clientes. Cada persona acepta su propia invitación. El administrador no puede conceder superadministración.
+El administrador invitado crea su cuenta normal con el correo indicado. Después inicia sesión y canjea el código para entrar a esa empresa. Ya dentro invita a productores, importadores, transportadores y otros administradores; cada persona crea primero su cuenta normal y luego canjea el código desde **Aceptar invitación**. Los códigos vencen a los siete días, se usan una sola vez y no conceden superadministración.
 
-**Alta propia:** se mantiene la posibilidad existente de que un perfil global comercial o administrador registre su empresa. El sistema lo vincula como administrador de esa nueva organización. Esto permite el registro directo además del alta asistida por la plataforma.
+No existe alta propia de empresas: solo el superadministrador las crea desde el panel de plataforma y genera la invitación de su primer administrador.
 
 Los formularios de cuentas globales de superadministración permiten crear o suspender usuarios, pero crear una cuenta individual no la convierte automáticamente en miembro de una empresa.
 

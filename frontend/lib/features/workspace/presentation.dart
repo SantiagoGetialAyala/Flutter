@@ -115,7 +115,7 @@ String moduleHelp(String key) =>
           'Organiza tus exportaciones y consulta en qué etapa está cada envío.',
       'export-allocations':
           'Reserva los lotes y cantidades que se usarán en cada exportación.',
-      'orders': 'Consulta los pedidos y registra la recepción de la mercancía.',
+      'orders': 'Revisa las solicitudes de importación y confirma las recepciones.',
       'clients':
           'Guarda los datos de los clientes e importadores con quienes trabajas.',
       'activities':
@@ -190,7 +190,7 @@ String moduleCreateLabel(String key) =>
     const {
       'exports': 'Nueva exportación',
       'export-allocations': 'Reservar lote',
-      'orders': 'Nuevo pedido',
+      'orders': 'Nueva solicitud',
       'clients': 'Nuevo cliente',
       'activities': 'Nueva tarea',
       'approvals': 'Nueva solicitud',
@@ -390,7 +390,9 @@ class RecordCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = record;
-    final title = module == 'transports' && r['export_code'] != null
+    final title = module == 'orders'
+        ? '${r['reference'] ?? 'Solicitud #${r['id']}'}'
+        : module == 'transports' && r['export_code'] != null
         ? '${r['export_code']} · ${r['pickup_place'] != null ? '${r['pickup_place']} → ${r['delivery_place']}' : r['delivery_place'] ?? ''}'
         : '${r['title'] ?? r['name'] ?? r['business_name'] ?? r['code'] ?? r['reference'] ?? r['email'] ?? r['description'] ?? r['plate'] ?? r['key'] ?? 'Registro #${r['id']}'}';
     final photo = [
@@ -403,12 +405,15 @@ class RecordCard extends StatelessWidget {
     ].contains(module);
     final status =
         r['status'] ??
+        (module == 'orders' ? r['request_status'] : null) ??
         r['payment_status'] ??
         r['account_status'] ??
         (module == 'platform-organizations'
             ? (r['is_active'] == false ? 'desactivada' : 'activa')
             : null);
-    final subtitle = module == 'exports'
+    final subtitle = module == 'orders'
+        ? '${friendly(r['product_type'])} · ${number(r['quantity'])} ${r['unit'] ?? ''} · ${r['destination_country'] ?? 'Destino pendiente'} · ${((r['requested_documents'] as List?) ?? const []).length} documento(s) solicitado(s)'
+        : module == 'exports'
         ? (r['allocations'] is List && (r['allocations'] as List).isNotEmpty
               ? '${(r['allocations'] as List).length} lote(s) de origen'
               : 'Operación de exportación')

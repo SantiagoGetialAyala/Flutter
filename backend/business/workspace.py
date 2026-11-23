@@ -47,6 +47,8 @@ def descriptor(module, cls, allowed, role):
             continue
         if role == 'logistica' and name in ('operator', 'producer'):
             continue
+        if role == 'importador' and module == 'orders' and name in ('export', 'reference', 'received_at', 'received_by', 'reception_notes'):
+            continue
         if role == 'logistica' and module == 'transports' and name not in ('vehicle', 'driver', 'waybill'):
             continue
         data = {'key': name, 'label': FIELD_LABELS.get(name, str(field.label or name).replace('_', ' ').capitalize()), 'required': field.required, 'nullable': field.allow_null}
@@ -71,6 +73,26 @@ def descriptor(module, cls, allowed, role):
             data.update(type='choice', choices=[
                 {'value': country.name, 'label': country.name}
                 for country in Country.objects.filter(is_active=True)])
+        if module == 'orders':
+            labels = {
+                'product_type': 'Producto',
+                'quantity': 'Cantidad solicitada',
+                'unit': 'Unidad',
+                'destination_country': 'País de destino',
+                'description': 'Detalles adicionales (opcional)',
+                'requested_document_1': 'Documento solicitado 1',
+                'requested_document_2': 'Documento solicitado 2',
+                'requested_document_3': 'Documento solicitado 3',
+            }
+            if name in labels:
+                data['label'] = labels[name]
+            if role == 'importador' and name in ('product_type', 'quantity', 'destination_country'):
+                data['required'] = True
+            if name == 'destination_country':
+                from catalog.models import Country
+                data.update(type='choice', choices=[
+                    {'value': country.name, 'label': country.name}
+                    for country in Country.objects.filter(is_active=True)])
         if module == 'finance' and name == 'base_currency':
             data['label'] = 'Moneda de reporte'
         if name == 'account_status':

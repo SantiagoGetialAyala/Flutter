@@ -21,10 +21,10 @@ La suscripción es una propuesta comercial. El sistema actual no incluye cobro d
 
 | Rol | Trabajo principal |
 | --- | --- |
-| Administrador | Invita al equipo; registra importadores, exportaciones y pedidos; reserva lotes; carga y verifica documentos; aprueba despacho; asigna transporte; registra costos, ingresos y pagos; cierra la operación. |
+| Administrador | Invita al equipo; atiende solicitudes de importación, crea exportaciones vinculadas, reserva lotes, carga y verifica documentos; asigna transporte; registra costos, ingresos y pagos; cierra la operación. |
 | Productor | Registra su perfil, fincas, parcelas, cosechas, lotes y soportes de origen. |
 | Transportador | Consulta sus cargas asignadas y registra recogida, salida y entrega con evidencias. |
-| Importador | Consulta sus pedidos y documentos compartidos; confirma recepción y reporta problemas. |
+| Importador | Solicita café o cacao con cantidad, destino y hasta tres documentos requeridos; consulta el expediente y confirma recepción. |
 
 El administrador es la persona encargada de la empresa. Puede invitar a otro administrador para compartir el trabajo. Ya no se invita por separado a coordinación, comercial, documental, financiero ni gerencia. Las cuentas y membresías existentes de esos perfiles se convierten en Administrador; se conservan sus operaciones, archivos e historial. La migración registra los cambios de membresía en auditoría. Superadministración es una función técnica de plataforma y no aparece en las invitaciones de la empresa.
 
@@ -34,11 +34,12 @@ El administrador puede cargar y verificar el mismo documento. Se conservan los c
 
 1. El administrador invita al productor, transportador e importador.
 2. El productor registra finca, cosecha y lote. La cosecha vincula el lote con su parcela en el mapa.
-3. El administrador registra importador y exportación, reserva lotes y crea el pedido.
-4. El administrador carga y verifica documentos, requisitos y evaluación de cumplimiento; después aprueba despacho.
-5. El administrador asigna el transporte. El transportador registra recogida, salida y entrega con evidencias.
-6. El administrador actualiza la llegada y entrega. El importador confirma recepción.
-7. El administrador registra costos, ingresos y pagos, revisa los pendientes y cierra la exportación.
+3. El importador envía una solicitud indicando producto, cantidad, destino y hasta tres documentos.
+4. El administrador recibe la solicitud, crea la exportación desde ella y reserva lotes del productor hasta completar lo solicitado.
+5. El administrador carga las versiones de los documentos pedidos en el expediente, revisa requisitos y aprueba despacho.
+6. El administrador asigna el transporte. El transportador atiende solo sus cargas asignadas y registra recogida, salida y entrega con evidencias.
+7. El administrador actualiza la llegada y entrega. El importador confirma recepción.
+8. El administrador registra costos, ingresos y pagos, revisa los pendientes y cierra la exportación.
 
 La [guía completa de prueba](prueba-exportacion-completa.md) incluye cada botón, los cuatro accesos de laboratorio, valores de ejemplo y archivos para cargar.
 
@@ -46,8 +47,8 @@ La [guía completa de prueba](prueba-exportacion-completa.md) incluye cada botó
 
 1. El administrador abre **Invitar personas**, escribe el correo y elige **Productor**.
 2. Avisa a la persona que ya puede registrarse con ese correo.
-3. La persona abre **Crear cuenta**, completa sus datos y contraseña usando el correo invitado. La empresa y la función se obtienen de la invitación vigente; no hay selector de rol ni campo de código.
-4. Al crear la cuenta entra directamente a su empresa. Si ya tenía cuenta, inicia sesión y pulsa **Aceptar invitación** en Inicio.
+3. La persona crea su cuenta normal con el mismo correo de la invitación.
+4. Después de iniciar sesión, pulsa **Aceptar invitación** en Inicio y escribe el código. La empresa y la función se asignan desde la invitación; no hay selector de rol.
 5. Dentro de la empresa abre **Perfil de productor** y registra sus datos; después crea la finca con sus parcelas desde **Fincas y parcelas**, y continúa con cosechas y lotes.
 
 Si el administrador ya creó la ficha del productor, debe vincularla a la cuenta correspondiente. La ficha comercial de un productor y su cuenta de acceso son registros distintos. Para el importador también hay que vincular su cuenta a la ficha de cliente para que consulte sus exportaciones.
