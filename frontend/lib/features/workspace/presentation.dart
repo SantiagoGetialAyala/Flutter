@@ -413,7 +413,7 @@ class RecordCard extends StatelessWidget {
             ? (r['is_active'] == false ? 'desactivada' : 'activa')
             : null);
     final subtitle = module == 'orders'
-        ? '${friendly(r['product_type'])} · ${number(r['quantity'])} ${r['unit'] ?? ''} · ${r['destination_country'] ?? 'Destino pendiente'} · ${((r['requested_documents'] as List?) ?? const []).length} documento(s) solicitado(s)'
+        ? '${friendly(r['product_type'])} · ${number(r['quantity'])} ${r['unit'] ?? ''} · ${r['destination_country'] ?? 'Destino pendiente'} · ${((r['requested_documents'] as List?) ?? const []).length} documento(s) solicitado(s)${r['export_code'] != null ? ' · ${r['export_code']} · ${friendly(r['export_status'] ?? 'pendiente')}' : ''}'
         : module == 'exports'
         ? (r['allocations'] is List && (r['allocations'] as List).isNotEmpty
               ? '${(r['allocations'] as List).length} lote(s) de origen'

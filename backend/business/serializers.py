@@ -113,6 +113,7 @@ class BusinessSerializer(TenantSerializer):
 class OrderSerializer(BusinessSerializer):
     requester_email = serializers.EmailField(source='requested_by.email', read_only=True, allow_null=True)
     export_code = serializers.CharField(source='export.code', read_only=True, allow_null=True)
+    export_status = serializers.CharField(source='export.status', read_only=True, allow_null=True)
     requested_documents = serializers.SerializerMethodField()
     request_status = serializers.SerializerMethodField()
 

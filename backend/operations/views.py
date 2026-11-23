@@ -399,6 +399,43 @@ class ExportViewSet(OrganizationScopedViewSet):
                 requested_kg = order.quantity * (Decimal('1000') if order.unit == 'tonelada' else Decimal('1'))
                 if allocated_kg < requested_kg:
                     raise ValidationError({'status': 'Reserva lotes del producto solicitado hasta completar la cantidad del importador antes de continuar.'})
+        if next_status == 'cerrada':
+            from business.models import Order
+            order = Order.objects.filter(export=export).order_by('pk').first()
+            missing = []
+            if order is None:
+                missing.append('la solicitud del importador')
+            elif order.received_at is None:
+                missing.append('la confirmación de recepción del importador')
+            if order is not None:
+                requested = [
+                    name.strip() for name in (
+                        order.requested_document_1,
+                        order.requested_document_2,
+                        order.requested_document_3,
+                    ) if name.strip()
+                ]
+                approved_documents = list(export.documents.filter(
+                    status='aprobado', versions__isnull=False,
+                ).values_list('title', 'document_type'))
+                normalize = lambda value: ''.join(char for char in value.casefold() if char.isalnum())
+                for name in requested:
+                    normalized = normalize(name)
+                    if not any(
+                        normalized in {normalize(title), normalize(document_type)}
+                        or (normalize(document_type) and normalize(document_type) in normalized)
+                        for title, document_type in approved_documents
+                    ):
+                        missing.append(f'el documento aprobado "{name}"')
+            if not export.transports.filter(status='entregado').exists():
+                missing.append('la entrega final del transportador')
+            if missing:
+                raise ValidationError({
+                    'status': 'No se puede cerrar la operación. Falta completar: '
+                    + ', '.join(missing) + '.'
+                })
+            from business.services import ensure_compliance
+            ensure_compliance(export)
         if export.status == "bloqueada" and (role not in {Role.ADMINISTRADOR, Role.DOCUMENTAL} or not str(request.data.get("notes", "")).strip()):
             raise PermissionDenied("Solo el administrador puede desbloquear, con una justificación.")
         previous = export.status

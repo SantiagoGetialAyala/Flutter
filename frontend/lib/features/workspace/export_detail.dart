@@ -86,6 +86,171 @@ class _ExportDetailState extends State<ExportDetail> {
         : 'Hay $allocated de $requested kg reservados. Completa la cantidad solicitada.';
   }
 
+  List<Map<String, dynamic>> get _completionGaps {
+    if (_record['status'] == 'cerrada') return const [];
+    final gaps = <Map<String, dynamic>>[];
+    void add(String title, String owner, String key, int stage) {
+      gaps.add({'title': title, 'owner': owner, 'key': key, 'stage': stage});
+    }
+
+    final order = _importRequest;
+    if (order == null) {
+      if (_module('orders') != null) {
+        add(
+          'Registrar y vincular el pedido del importador',
+          'Importador y administrador',
+          'orders',
+          1,
+        );
+      }
+    } else {
+      if (_module('export-allocations') != null && !_allocationComplete) {
+        add(
+          'Reservar los lotes hasta completar ${number(_inKilograms(order['quantity'], order['unit']))} kg',
+          'Administrador / equipo exportador',
+          'export-allocations',
+          1,
+        );
+      }
+      final docs = _resources['documents'] ?? [];
+      for (final name
+          in _module('documents') == null
+              ? const <dynamic>[]
+              : (order['requested_documents'] as List? ?? const [])) {
+        final expected = _normalizeDocument('$name');
+        final found = docs.any((doc) {
+          final type = _normalizeDocument('${doc['document_type'] ?? ''}');
+          final title = _normalizeDocument('${doc['title'] ?? ''}');
+          return (type == expected ||
+                  title == expected ||
+                  (type.isNotEmpty && expected.contains(type))) &&
+              doc['status'] == 'aprobado' &&
+              (doc['versions'] as List? ?? const []).isNotEmpty;
+        });
+        if (!found)
+          add(
+            'Cargar y aprobar el documento solicitado: $name',
+            'Empresa / responsable documental',
+            'documents',
+            2,
+          );
+      }
+    }
+
+    if (_module('requirements') != null) {
+      final requirements = _resources['requirements'] ?? [];
+      if (requirements.isEmpty) {
+        add(
+          'Configurar al menos un requisito obligatorio del destino',
+          'Administrador / responsable documental',
+          'requirements',
+          2,
+        );
+      }
+      for (final requirement in requirements.where(
+        (row) => row['mandatory'] != false,
+      )) {
+        final type = _normalizeDocument(
+          '${requirement['document_type'] ?? ''}',
+        );
+        final documentReady = (_resources['documents'] ?? []).any(
+          (doc) =>
+              _normalizeDocument('${doc['document_type'] ?? ''}') == type &&
+              doc['status'] == 'aprobado' &&
+              (doc['versions'] as List? ?? const []).isNotEmpty,
+        );
+        final checked = (_resources['checklist'] ?? []).any(
+          (item) =>
+              '${item['requirement']}' == '${requirement['id']}' &&
+              item['passed'] == true,
+        );
+        if (!documentReady || !checked) {
+          add(
+            'Cumplir el requisito: ${requirement['name']}',
+            'Empresa / responsable documental',
+            'requirements',
+            2,
+          );
+        }
+      }
+      final compliant = (_resources['compliance'] ?? []).any(
+        (row) => row['result'] == 'conforme',
+      );
+      if (!compliant)
+        add(
+          'Registrar una evaluación de cumplimiento conforme',
+          'Responsable documental',
+          'compliance',
+          2,
+        );
+    }
+
+    if (_module('transports') != null &&
+        (!['entregada', 'cerrada'].contains(_record['status']) ||
+            !(_resources['transports'] ?? []).any(
+              (row) => row['status'] == 'entregado',
+            ))) {
+      add(
+        'Finalizar el transporte y registrar la entrega',
+        'Transportador y empresa',
+        'transports',
+        3,
+      );
+    }
+    if (_module('orders') != null &&
+        order != null &&
+        order['received_at'] == null) {
+      add('Confirmar la recepción de la mercancía', 'Importador', 'orders', 1);
+    }
+    return gaps;
+  }
+
+  String _normalizeDocument(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  Widget _completionPanel() {
+    final gaps = _completionGaps;
+    return Card(
+      color: gaps.isEmpty ? const Color(0xFFEAF3E9) : const Color(0xFFFFF7E6),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              gaps.isEmpty
+                  ? 'Todo listo para cerrar'
+                  : 'Falta completar ${gaps.length} paso(s)',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              gaps.isEmpty
+                  ? 'La operación cumple los pasos requeridos.'
+                  : 'Abre un pendiente para ir a la sección y ver quién debe resolverlo.',
+            ),
+            if (gaps.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              for (final gap in gaps)
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                  ),
+                  onPressed: () => setState(() {
+                    _tab = 1;
+                    _focusStage = gap['stage'] as int;
+                  }),
+                  icon: const Icon(Icons.error_outline, size: 18),
+                  label: Text('${gap['title']} · ${gap['owner']}'),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -635,6 +800,8 @@ class _ExportDetailState extends State<ExportDetail> {
               nextStep('${_record['status']}'),
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 10),
+            _completionPanel(),
             const SizedBox(height: 12),
             if (!_terminal)
               FilledButton.icon(
@@ -794,9 +961,22 @@ class _ExportDetailState extends State<ExportDetail> {
       if (widget.canTransition &&
           (_record['allowed_transitions'] as List? ?? []).isNotEmpty)
         FilledButton.icon(
-          onPressed: _transition,
+          onPressed:
+              (_record['allowed_transitions'] as List? ?? []).contains(
+                    'cerrada',
+                  ) &&
+                  _completionGaps.isNotEmpty
+              ? null
+              : _transition,
           icon: const Icon(Icons.arrow_forward),
-          label: const Text('Actualizar estado de la operación'),
+          label: Text(
+            (_record['allowed_transitions'] as List? ?? []).contains(
+                      'cerrada',
+                    ) &&
+                    _completionGaps.isNotEmpty
+                ? 'Completa los pendientes para cerrar'
+                : 'Actualizar estado de la operación',
+          ),
         ),
       if (_module('exports')?['can_update'] == true && !_terminal)
         OutlinedButton.icon(
