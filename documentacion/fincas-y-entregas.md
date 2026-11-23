@@ -24,8 +24,9 @@ La finca y sus nuevas parcelas se guardan en una transacción: si una parcela es
 2. El **administrador** abre el expediente y elige **Programar transporte**.
 3. Selecciona el **Transportador responsable** entre las cuentas activas de Logística, y completa recogida, lugar de entrega y fecha prevista. También puede hacerlo administración, según sus permisos.
 4. Al guardar, la carga queda vinculada a esa cuenta. El sistema crea una notificación y la carga aparece en **Mis envíos** y en las tareas del transportador asignado.
-5. El transportador registra vehículo, conductor y guía cuando corresponda; después registra **recogida → inicio → entrega** con documentos de evidencia. Solo puede actuar sobre sus cargas asignadas.
-6. El importador consulta su envío y confirma la recepción del pedido cuando la exportación está arribada, entregada o cerrada. La entrega del transportador y la recepción del comprador son confirmaciones distintas.
+5. El transportador abre **Mis envíos** y marca **Recogida → En ruta → Finalizado**. La hora se guarda sola y la observación es opcional; no tiene que cargar documentos para registrar el avance.
+6. Cada avance mueve el estado de la exportación y queda en su historial. Al finalizar el transporte, el estado queda **Entregada**.
+7. El importador consulta su envío y confirma la recepción del pedido cuando la exportación está arribada, entregada o cerrada. La entrega del transportador y la recepción del comprador son confirmaciones distintas.
 
 Crear una finca o un lote no programa automáticamente un transporte. El administrador debe reservar los lotes de la exportación y programar la recogida.
 

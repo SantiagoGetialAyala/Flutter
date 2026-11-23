@@ -115,7 +115,8 @@ String moduleHelp(String key) =>
           'Organiza tus exportaciones y consulta en qué etapa está cada envío.',
       'export-allocations':
           'Reserva los lotes y cantidades que se usarán en cada exportación.',
-      'orders': 'Revisa las solicitudes de importación y confirma las recepciones.',
+      'orders':
+          'Revisa las solicitudes de importación y confirma las recepciones.',
       'clients':
           'Guarda los datos de los clientes e importadores con quienes trabajas.',
       'activities':
@@ -247,7 +248,7 @@ String friendly(dynamic value) {
         'transito_internacional': 'En tránsito',
         'arribada': 'En destino',
         'entregada': 'Entregada',
-        'entregado': 'Entregado',
+        'entregado': 'Finalizado',
         'cerrada': 'Completada',
         'bloqueada': 'Bloqueada',
         'rechazada': 'Rechazada',

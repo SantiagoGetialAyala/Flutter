@@ -88,25 +88,19 @@ Cada cambio de estado pide una justificación. En esta simulación puedes escrib
 
 ## 6. Registrar el recorrido — Transportador y administrador
 
-Entra como **transportador** y abre el transporte asignado. Puedes editarlo para seleccionar vehículo **DEMO-001**, **Conductor demo** y una guía de prueba.
+Entra como **transportador** y abre el transporte asignado. Registra los avances sin cargar documentos.
 
-Para cada avance usa **Registrar avance**. Si lo abres desde la bandeja de tareas, se propone el siguiente evento permitido. Selecciona fecha/hora y un documento de evidencia de esta misma exportación que ya tenga un archivo cargado.
+Para cada avance usa **Registrar avance**. Si lo abres desde la bandeja de tareas, aparece el siguiente hito permitido. La hora se registra automáticamente; agrega una observación solo si hace falta.
 
-| Orden | Evento | Soporte de ejemplo | Resultado del transporte |
+| Orden | Avance | Resultado del transporte | Resultado de la exportación |
 | --- | --- | --- | --- |
-| 1 | Recogida | [recogida-prueba.pdf](archivos-prueba/recogida-prueba.pdf) | Recogido |
-| 2 | Inicio del trayecto | [salida-prueba.pdf](archivos-prueba/salida-prueba.pdf) | En tránsito |
-| 3 | Entrega | [entrega-prueba.pdf](archivos-prueba/entrega-prueba.pdf) | Entregado |
+| 1 | Recogida | Recogido | Preparando envío |
+| 2 | En ruta | En tránsito | En transporte |
+| 3 | Finalizado | Finalizado | Entregada |
 
-Para cargar un soporte: en **Documentos → Nuevo documento**, vincula **PRUEBA-EXP-001**, escribe un título —por ejemplo **Recogida prueba**— y tipo **`evidencia`**; guarda y pulsa **Cargar nueva versión**. Regresa a **Registrar avance** y selecciona ese documento. También puedes crearlo con **Crear aquí** desde el selector de evidencia; después vuelve a Documentos para cargar su archivo antes de guardar el evento.
+Cada hito actualiza el transporte y avanza la exportación automáticamente. Al finalizar, la exportación queda **Entregada**; el administrador puede cerrar la operación tras revisar recepción y pagos.
 
-Registra las fechas en orden cronológico. Entre avances, el administrador puede actualizar el estado de la exportación según lo ocurrido:
-
-**Preparando envío → En transporte → Embarcada → En tránsito → En destino → Entregada.**
-
-Los eventos del transportador actualizan su transporte. El estado general de la exportación se cambia desde **Actualizar estado de la operación**, con la cuenta de **administrador**. Para una simulación puedes completar los eventos y después recorrer esos estados en orden; en una operación real se registran cuando ocurren.
-
-**Comprueba:** el transporte tiene recogida y entrega reales, los eventos conservan sus archivos y la exportación llega a **Entregada**.
+**Comprueba:** el transporte queda finalizado y el historial de la exportación registra cada avance.
 
 ## 7. Confirmar la recepción — Importador
 

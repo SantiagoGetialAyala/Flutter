@@ -6,7 +6,7 @@ El **Administrador** es la persona encargada de la empresa. Solo él invita al e
 | --- | --- | --- |
 | Administrador | Invita y vincula cuentas; registra importadores, exportaciones y pedidos; reserva lotes; verifica documentos; aprueba despacho; asigna transporte; registra ingresos, costos y pagos; cierra. | Los registros de su empresa. |
 | Productor | Registra su perfil, fincas, parcelas, cosechas, lotes y soportes de origen. | Su origen y las entregas relacionadas. |
-| Transportador | Atiende sus cargas; registra vehículo, conductor, recogida, salida y entrega con evidencias. | Solo los envíos asignados a su cuenta. |
+| Transportador | Atiende sus cargas asignadas y registra recogida, ruta y finalización con observaciones opcionales. | Solo los envíos asignados a su cuenta. |
 | Importador | Consulta pedidos y archivos compartidos; confirma recepción y reporta problemas. | Solo sus compras y envíos. |
 
 El identificador interno del Transportador continúa siendo `logistica` para conservar las asignaciones existentes. La cuenta técnica de plataforma se mantiene fuera de las invitaciones empresariales.
@@ -28,8 +28,8 @@ Puedes invitar a otro Administrador si necesitas compartir la gestión. Cada có
 3. **Administrador:** abre la solicitud y pulsa **Crear exportación**. El expediente queda vinculado al importador y a su solicitud.
 4. **Administrador:** reserva lotes del producto solicitado hasta completar la cantidad; carga hasta tres documentos solicitados en **Documentos y versiones** y completa requisitos del destino.
 5. **Administrador:** asigna un transporte a una cuenta Transportador.
-6. **Transportador:** consulta solo sus cargas asignadas y registra recogida → inicio → entrega con archivos de evidencia.
-7. **Administrador:** actualiza los estados de la exportación hasta llegada y entrega.
+6. **Transportador:** consulta solo sus cargas asignadas; marca **Recogida → En ruta → Finalizado** y agrega observaciones opcionales. La hora se registra automáticamente.
+7. **Sistema:** avanza el estado de la exportación con cada hito; al finalizar la entrega queda **Entregada**. El administrador conserva el cierre financiero.
 8. **Importador:** confirma recepción del pedido.
 9. **Administrador:** registra costos, ingresos y pagos; revisa pendientes y cierra.
 

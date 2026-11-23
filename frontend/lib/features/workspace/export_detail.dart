@@ -34,7 +34,9 @@ class _ExportDetailState extends State<ExportDetail> {
   late Map<String, dynamic> _record = widget.record;
   List<Map<String, dynamic>> _history = [];
   bool _loading = true;
+  bool _savingProgress = false;
   String? _error;
+  String? _savedMessage;
   int _tab = 0;
   late int _focusStage = lifecycleStage('${_record["status"]}');
   int _revision = 0;
@@ -45,6 +47,44 @@ class _ExportDetailState extends State<ExportDetail> {
   bool _canCreate(String key) => _module(key)?['can_create'] == true;
   bool get _terminal =>
       ['cerrada', 'cancelada', 'rechazada'].contains(_record['status']);
+
+  double _inKilograms(dynamic quantity, dynamic unit) {
+    final value = double.tryParse('$quantity') ?? 0;
+    return unit == 'tonelada' ? value * 1000 : value;
+  }
+
+  double get _allocatedKilograms =>
+      (_resources['export-allocations'] ?? []).fold<double>(
+        0,
+        (total, row) => total + _inKilograms(row['quantity'], row['unit']),
+      );
+
+  Map<String, dynamic>? get _importRequest =>
+      (_resources['orders'] ?? []).firstOrNull;
+
+  bool get _allocationComplete {
+    final request = _importRequest;
+    if (request == null)
+      return (_resources['export-allocations'] ?? []).isNotEmpty;
+    return _allocatedKilograms + .000001 >=
+        _inKilograms(request['quantity'], request['unit']);
+  }
+
+  String get _allocationProgressLabel {
+    final request = _importRequest;
+    if (request == null) {
+      return (_resources['export-allocations'] ?? []).isEmpty
+          ? 'Reserva al menos un lote para continuar.'
+          : 'Lotes guardados. Ya puedes seguir con la importación.';
+    }
+    final allocated = number(_allocatedKilograms);
+    final requested = number(
+      _inKilograms(request['quantity'], request['unit']),
+    );
+    return _allocationComplete
+        ? '$allocated de $requested kg reservados. Todo listo para continuar.'
+        : 'Hay $allocated de $requested kg reservados. Completa la cantidad solicitada.';
+  }
 
   @override
   void initState() {
@@ -75,6 +115,16 @@ class _ExportDetailState extends State<ExportDetail> {
       'orders',
     ];
     await Future.wait([
+      () async {
+        try {
+          final record = await widget.api.getMap('/exports/${_record['id']}/');
+          if (mounted && revision == _revision) _record = record;
+        } catch (e) {
+          if (mounted && revision == _revision) {
+            _error = 'No pudimos actualizar el expediente. $e';
+          }
+        }
+      }(),
       () async {
         try {
           final history = await widget.api.getAll(
@@ -168,6 +218,55 @@ class _ExportDetailState extends State<ExportDetail> {
       if (mounted) await _load();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _continueImportation() async {
+    if (_savingProgress || !_allocationComplete) return;
+    setState(() {
+      _savingProgress = true;
+      _error = null;
+    });
+    try {
+      await widget.api.post('/exports/${_record['id']}/transition/', {
+        'status': 'pendiente_documentacion',
+        'notes':
+            'Lotes reservados. Continuar con los documentos de importación.',
+      });
+      final record = await widget.api.getMap('/exports/${_record['id']}/');
+      if (!mounted) return;
+      setState(() {
+        _record = record;
+        _focusStage = 2;
+        _tab = 1;
+      });
+      await _load();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _savingProgress = false);
+    }
+  }
+
+  Future<void> _saveProgress() async {
+    if (_savingProgress || _terminal) return;
+    setState(() {
+      _savingProgress = true;
+      _error = null;
+      _savedMessage = null;
+    });
+    try {
+      await widget.api.post('/exports/${_record['id']}/checkpoint/', {});
+      await _load();
+      if (mounted) {
+        setState(
+          () => _savedMessage = 'Avance guardado y expediente actualizado.',
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _savingProgress = false);
     }
   }
 
@@ -552,6 +651,49 @@ class _ExportDetailState extends State<ExportDetail> {
                       : 'Ver mi trabajo en el expediente',
                 ),
               ),
+            if (_record['status'] == 'borrador' &&
+                widget.canTransition &&
+                (_record['allowed_transitions'] as List? ?? []).contains(
+                  'pendiente_documentacion',
+                )) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _savingProgress || _loading ? null : _saveProgress,
+                icon: _savingProgress
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+                label: Text(
+                  _savingProgress ? 'Guardando…' : 'Guardar y actualizar',
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _savingProgress || _loading || !_allocationComplete
+                    ? null
+                    : _continueImportation,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Continuar a documentos'),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _allocationProgressLabel,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: _allocationComplete ? AppTheme.forest : AppTheme.muted,
+                ),
+              ),
+            ],
+            if (_savedMessage != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _savedMessage!,
+                style: const TextStyle(color: AppTheme.forest, fontSize: 12),
+              ),
+            ],
             const SizedBox(height: 8),
             const Text(
               'Puedes salir y continuar después. Cada etapa se completa con el equipo responsable.',
@@ -624,6 +766,30 @@ class _ExportDetailState extends State<ExportDetail> {
         'Pedido → documentos → transporte → cierre. Cada sección indica quién la completa.',
         style: TextStyle(color: AppTheme.muted),
       ),
+      if (_module('exports')?['can_update'] == true && !_terminal) ...[
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _savingProgress || _loading ? null : _saveProgress,
+          icon: _savingProgress
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.sync),
+          label: Text(
+            _savingProgress ? 'Actualizando…' : 'Guardar y actualizar',
+          ),
+        ),
+        if (_savedMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _savedMessage!,
+              style: const TextStyle(color: AppTheme.forest, fontSize: 12),
+            ),
+          ),
+      ],
       const SizedBox(height: 14),
       if (widget.canTransition &&
           (_record['allowed_transitions'] as List? ?? []).isNotEmpty)
@@ -647,10 +813,7 @@ class _ExportDetailState extends State<ExportDetail> {
           children: [_lots()],
         ),
       _resourceSection('orders', 'Pedido del comprador y recepción'),
-      _stepHeading('2. Documentos y aprobación', [
-        'documents',
-        'requirements',
-      ]),
+      _stepHeading('2. Documentos y aprobación', ['documents', 'requirements']),
       _resourceSection('requirements', 'Requisitos del destino'),
       _resourceSection('documents', 'Documentos y versiones'),
       _stepHeading('3. Transporte y entrega', ['transports']),

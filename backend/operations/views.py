@@ -8,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from users.models import AuditEvent, Membership, Role
+from users.access import require
 from .models import (
     Certification, Crop, ExportLotAllocation, ExportOperation, ExportStatusHistory,
     Farm, Harvest, InventoryMovement, LotRelationship, Plot, ProductLot, Producer,
@@ -19,6 +20,42 @@ from .serializers import (
     InventoryMovementSerializer, LotRelationshipSerializer, PlotSerializer, ProductLotSerializer,
     ProducerSerializer, TraceabilityEventSerializer,
 )
+
+
+EXPORT_PROGRESS_RANK = {
+    'borrador': 0, 'pendiente_documentacion': 1, 'en_revision': 2,
+    'requiere_correcciones': 3, 'aprobada_despacho': 4,
+    'preparacion_logistica': 5, 'transporte_terrestre': 6,
+    'embarcada': 7, 'transito_internacional': 8, 'arribada': 9,
+    'entregada': 10, 'cerrada': 11,
+}
+
+
+def advance_export_from_transport(export, next_status, actor, organization, event):
+    current_rank = EXPORT_PROGRESS_RANK.get(export.status)
+    next_rank = EXPORT_PROGRESS_RANK.get(next_status)
+    if current_rank is None or next_rank is None or next_rank <= current_rank:
+        return False
+    previous_status = export.status
+    export.status = next_status
+    export.save(update_fields=['status', 'updated_at'])
+    ExportStatusHistory.objects.create(
+        organization=organization,
+        export=export,
+        previous_status=previous_status,
+        new_status=next_status,
+        actor=actor,
+        notes=f'Avance de transporte: {event}.',
+    )
+    AuditEvent.objects.create(
+        organization=organization,
+        actor=actor,
+        action='export.status_changed',
+        resource_type='exportoperation',
+        resource_id=str(export.pk),
+        metadata={'from': previous_status, 'to': next_status, 'transport_event': event},
+    )
+    return True
 
 
 class OrganizationScopedViewSet(viewsets.ModelViewSet):
@@ -292,6 +329,42 @@ class ExportViewSet(OrganizationScopedViewSet):
     def history(self, request, pk=None):
         export = self.get_object()
         return Response(ExportStatusHistorySerializer(export.status_history.select_related("actor"), many=True).data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def checkpoint(self, request, pk=None):
+        role = self.get_membership().role.name
+        require(role, 'exports', 'update')
+        export = get_object_or_404(
+            ExportOperation.objects.select_for_update(),
+            pk=pk,
+            pk__in=self.get_queryset().values('pk'),
+        )
+        transport_targets = {
+            'recogido': 'preparacion_logistica',
+            'en_transito': 'transporte_terrestre',
+            'entregado': 'entregada',
+        }
+        targets = [
+            transport_targets[status]
+            for status in transport_targets
+            if export.transports.filter(status=status).exists()
+        ]
+        target = max(targets, key=lambda status: EXPORT_PROGRESS_RANK[status], default=None)
+        if target:
+            advance_export_from_transport(
+                export, target, request.user, self.organization, 'guardado del expediente',
+            )
+        export.save(update_fields=['updated_at'])
+        AuditEvent.objects.create(
+            organization=self.organization,
+            actor=request.user,
+            action='export.progress_saved',
+            resource_type='exportoperation',
+            resource_id=str(export.pk),
+            metadata={'status': export.status, 'transport_status': target},
+        )
+        return Response(self.get_serializer(export).data)
 
     @action(detail=True, methods=["post"])
     @transaction.atomic

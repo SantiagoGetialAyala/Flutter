@@ -23,7 +23,7 @@ La suscripción es una propuesta comercial. El sistema actual no incluye cobro d
 | --- | --- |
 | Administrador | Invita al equipo; atiende solicitudes de importación, crea exportaciones vinculadas, reserva lotes, carga y verifica documentos; asigna transporte; registra costos, ingresos y pagos; cierra la operación. |
 | Productor | Registra su perfil, fincas, parcelas, cosechas, lotes y soportes de origen. |
-| Transportador | Consulta sus cargas asignadas y registra recogida, salida y entrega con evidencias. |
+| Transportador | Consulta sus cargas asignadas y registra recogida, ruta y finalización con observaciones opcionales. |
 | Importador | Solicita café o cacao con cantidad, destino y hasta tres documentos requeridos; consulta el expediente y confirma recepción. |
 
 El administrador es la persona encargada de la empresa. Puede invitar a otro administrador para compartir el trabajo. Ya no se invita por separado a coordinación, comercial, documental, financiero ni gerencia. Las cuentas y membresías existentes de esos perfiles se convierten en Administrador; se conservan sus operaciones, archivos e historial. La migración registra los cambios de membresía en auditoría. Superadministración es una función técnica de plataforma y no aparece en las invitaciones de la empresa.
@@ -37,8 +37,8 @@ El administrador puede cargar y verificar el mismo documento. Se conservan los c
 3. El importador envía una solicitud indicando producto, cantidad, destino y hasta tres documentos.
 4. El administrador recibe la solicitud, crea la exportación desde ella y reserva lotes del productor hasta completar lo solicitado.
 5. El administrador carga las versiones de los documentos pedidos en el expediente, revisa requisitos y aprueba despacho.
-6. El administrador asigna el transporte. El transportador atiende solo sus cargas asignadas y registra recogida, salida y entrega con evidencias.
-7. El administrador actualiza la llegada y entrega. El importador confirma recepción.
+6. El administrador asigna el transporte. El transportador atiende solo sus cargas asignadas y marca recogida, ruta y finalización; la hora queda registrada automáticamente.
+7. Cada avance mueve el estado de la exportación. Al finalizar la entrega queda como **Entregada**; el importador confirma recepción y el administrador conserva el cierre financiero.
 8. El administrador registra costos, ingresos y pagos, revisa los pendientes y cierra la exportación.
 
 La [guía completa de prueba](prueba-exportacion-completa.md) incluye cada botón, los cuatro accesos de laboratorio, valores de ejemplo y archivos para cargar.

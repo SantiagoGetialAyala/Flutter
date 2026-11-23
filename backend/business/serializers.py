@@ -166,4 +166,7 @@ def serializer_for(model):
         protected += [f.name for f in model._meta.fields if f.name != 'read']
     if model == m.FinanceEntry:
         protected += ['payment_status']
-    return type(model.__name__ + 'Serializer', (BusinessSerializer,), {'Meta': type('Meta', (), {'model': model, 'exclude': ('organization',), 'read_only_fields': tuple(protected), 'extra_kwargs': {'operator': {'required': False}} if model in (m.Vehicle, m.Driver) else {}})})
+    extra_kwargs = {'operator': {'required': False}} if model in (m.Vehicle, m.Driver) else {}
+    if model == m.TransportEvent:
+        extra_kwargs['event_at'] = {'required': False}
+    return type(model.__name__ + 'Serializer', (BusinessSerializer,), {'Meta': type('Meta', (), {'model': model, 'exclude': ('organization',), 'read_only_fields': tuple(protected), 'extra_kwargs': extra_kwargs})})

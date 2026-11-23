@@ -51,6 +51,8 @@ def descriptor(module, cls, allowed, role):
             continue
         if role == 'logistica' and module == 'transports' and name not in ('vehicle', 'driver', 'waybill'):
             continue
+        if role == 'logistica' and module == 'transport-events' and name in ('event_at', 'evidence'):
+            continue
         data = {'key': name, 'label': FIELD_LABELS.get(name, str(field.label or name).replace('_', ' ').capitalize()), 'required': field.required, 'nullable': field.allow_null}
         if isinstance(field, serializers.BooleanField):
             data['type'] = 'bool'
@@ -68,6 +70,15 @@ def descriptor(module, cls, allowed, role):
             data['type'] = 'number'
         else:
             data['type'] = 'password' if name == 'password' else 'text'
+        if role == 'logistica' and module == 'transport-events':
+            if name == 'event_type':
+                data.update(label='Avance', type='choice', choices=[
+                    {'value': 'recogida', 'label': 'Recogida'},
+                    {'value': 'inicio', 'label': 'En ruta'},
+                    {'value': 'entrega', 'label': 'Finalizado'},
+                ])
+            elif name == 'notes':
+                data['label'] = 'Observación (opcional)'
         if module == 'exports' and name == 'destination_country':
             from catalog.models import Country
             data.update(type='choice', choices=[

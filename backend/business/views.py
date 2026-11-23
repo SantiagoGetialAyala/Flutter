@@ -10,7 +10,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
-from operations.views import OrganizationScopedViewSet
+from operations.views import OrganizationScopedViewSet, advance_export_from_transport
 from users.access import audit, require
 from users.models import Membership, Role
 from catalog.models import Client, Country
@@ -174,25 +174,35 @@ class TransportEventViewSet(BusinessViewSet):
     def perform_create(self, serializer):
         transport = m.Transport.objects.select_for_update().get(pk=serializer.validated_data['transport'].pk)
         kind = serializer.validated_data['event_type']
+        event_at = serializer.validated_data.get('event_at') or timezone.now()
         if kind in ('recogida', 'inicio', 'entrega'):
             before, after = {'recogida': ('asignado', 'recogido'), 'inicio': ('recogido', 'en_transito'), 'entrega': ('en_transito', 'entregado')}[kind]
             if transport.status != before:
                 raise ValidationError(f'El evento {kind} requiere transporte en estado {before}.')
-            if not serializer.validated_data.get('evidence'):
-                raise ValidationError({'evidence': 'Adjunta un documento con evidencia de recogida, salida o entrega.'})
-            evidence = serializer.validated_data['evidence']
-            if not evidence.versions.exists() or evidence.export_id != transport.export_id:
-                raise ValidationError({'evidence': 'La evidencia debe contener un archivo y corresponder a esta exportación.'})
             previous = transport.events.order_by('-event_at').first()
-            if previous and serializer.validated_data['event_at'] < previous.event_at:
+            if previous and event_at < previous.event_at:
                 raise ValidationError('La fecha no puede ser anterior al último evento.')
             transport.status = after
             if kind == 'recogida':
-                transport.actual_pickup = serializer.validated_data['event_at']
+                transport.actual_pickup = event_at
             if kind == 'entrega':
-                transport.actual_delivery = serializer.validated_data['event_at']
+                transport.actual_delivery = event_at
             transport.save()
-        super().perform_create(serializer)
+            export = ExportOperation.objects.select_for_update().get(pk=transport.export_id)
+            target = {
+                'recogida': 'preparacion_logistica',
+                'inicio': 'transporte_terrestre',
+                'entrega': 'entregada',
+            }[kind]
+            advance_export_from_transport(
+                export, target, self.request.user, self.organization, kind,
+            )
+        event = serializer.save(
+            organization=self.organization,
+            actor=self.request.user,
+            event_at=event_at,
+        )
+        audit(self.request, self.organization, self.module + '.created', event)
         if kind == 'incidencia':
             m.Incident.objects.create(organization=self.organization, export=transport.export, transport=transport, title='Incidencia de transporte', description=serializer.validated_data.get('notes', ''), reported_by=self.request.user)
 

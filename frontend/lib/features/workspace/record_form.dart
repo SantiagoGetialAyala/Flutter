@@ -99,7 +99,8 @@ class _RecordFormState extends State<RecordForm> {
         endpoints.map((endpoint) async {
           final exportId = widget.initialValues['export'];
           final queryParameters = <String, String>{};
-          if (exportId != null && ['documents', 'transports'].contains(endpoint)) {
+          if (exportId != null &&
+              ['documents', 'transports'].contains(endpoint)) {
             queryParameters['export'] = '$exportId';
           }
           final productType = widget.initialValues['product_type'];
@@ -238,7 +239,9 @@ class _RecordFormState extends State<RecordForm> {
     if (item['harvest_date'] != null) {
       return 'Cosecha ${item['harvest_date']} · ${item['farm_name'] ?? ''} · ${item['plot_name'] ?? ''}';
     }
-    if (item['code'] != null && item['product_type'] != null && item['quantity_available'] != null) {
+    if (item['code'] != null &&
+        item['product_type'] != null &&
+        item['quantity_available'] != null) {
       return '${item['code']} · ${friendly(item['product_type'])} · disponible ${number(item['quantity_available'])} ${item['unit'] ?? 'kg'}';
     }
     final label =
@@ -603,7 +606,9 @@ class _RecordFormState extends State<RecordForm> {
         )
       : AlertDialog(
           title: Text(
-            widget.module['key'] == 'orders' && widget.record == null
+            widget.module['key'] == 'transport-events' && widget.record == null
+                ? 'Registrar avance'
+                : widget.module['key'] == 'orders' && widget.record == null
                 ? 'Solicitud de importación'
                 : widget.module['key'] == 'exports' && widget.record == null
                 ? 'Iniciar operación'
@@ -695,9 +700,9 @@ class _RecordFormState extends State<RecordForm> {
                                   widget.record == null
                               ? 'Enviar solicitud'
                               : widget.module['key'] == 'exports' &&
-                                  widget.record == null
-                                  ? 'Guardar borrador'
-                                  : 'Guardar'),
+                                    widget.record == null
+                              ? 'Guardar borrador'
+                              : 'Guardar'),
               ),
             ),
           ],
@@ -739,6 +744,9 @@ Future<bool?> openTransportEventForm({
             : f,
       )
       .toList();
+  final simpleTransporterForm = fields.every(
+    (field) => field['key'] != 'event_at',
+  );
   return showDialog<bool>(
     context: context,
     builder: (_) => RecordForm(
@@ -750,8 +758,9 @@ Future<bool?> openTransportEventForm({
         'export': exportId ?? transport['export'],
       },
       lockedFields: {'transport'},
-      intro:
-          'Envío #${transport['id']}. Para recogida, salida o entrega, selecciona un documento con archivo de evidencia. Puedes prepararlo desde Documentos.',
+      intro: simpleTransporterForm
+          ? 'Carga #${transport['id']}. Selecciona el avance; la hora se registra automáticamente. Puedes agregar una observación si hace falta.'
+          : 'Carga #${transport['id']}. Registra el evento y agrega una observación opcional.',
     ),
   );
 }
